@@ -49,6 +49,7 @@ import com.yomu.reader.data.Downloads
 import com.yomu.reader.data.Library
 import com.yomu.reader.data.Prefs
 import com.yomu.reader.data.ReaderMode
+import com.yomu.reader.data.TachiImport
 import com.yomu.reader.data.UpdateWorker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -111,7 +112,51 @@ fun MoreScreen() {
         }
     }
 
+    val importState by TachiImport.state.collectAsState()
+    val tachiLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            try {
+                val bytes = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                } ?: throw IllegalStateException("fichier illisible")
+                TachiImport.start(bytes)
+            } catch (e: Exception) {
+                message = "Échec de l'import : ${e.message}"
+            }
+        }
+    }
+
     release?.let { AppUpdateDialog(it, onDismiss = { release = null }) }
+
+    if (importState.finished) {
+        AlertDialog(
+            onDismissRequest = { TachiImport.dismiss() },
+            title = { Text("Import Tachiyomi terminé") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    if (importState.error != null) {
+                        Text(importState.error.orEmpty())
+                    } else {
+                        Text("${importState.imported} série(s) ajoutée(s) à ta bibliothèque, avec les chapitres lus.")
+                        if (importState.notFound.isNotEmpty()) {
+                            Text(
+                                "\nPas trouvées sur MangaDex (${importState.notFound.size}) :",
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            importState.notFound.forEach {
+                                Text("• $it", style = MaterialTheme.typography.bodySmall)
+                            }
+                            Text(
+                                "\nTu peux les chercher à la main dans Explorer (parfois sous un autre titre).",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { TachiImport.dismiss() }) { Text("OK") } },
+        )
+    }
 
     if (confirmDeleteAll) {
         AlertDialog(
@@ -272,6 +317,32 @@ fun MoreScreen() {
                         },
                     )
                 }
+            }
+            if (importState.running) {
+                ListItem(
+                    headlineContent = { Text("Import Tachiyomi en cours… ${importState.done}/${importState.total}") },
+                    supportingContent = {
+                        Column {
+                            Text(importState.current, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            LinearProgressIndicator(
+                                progress = { if (importState.total > 0) importState.done.toFloat() / importState.total else 0f },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp),
+                            )
+                            Text(
+                                "Garde l'appli ouverte pendant l'import.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    },
+                )
+            } else {
+                ListItem(
+                    headlineContent = { Text("Importer une sauvegarde Tachiyomi / Mihon") },
+                    supportingContent = { Text("Fichier .tachibk ou .proto.gz : séries et chapitres lus, retrouvés sur MangaDex") },
+                    modifier = Modifier.clickable { tachiLauncher.launch(arrayOf("*/*")) },
+                )
             }
             ListItem(
                 headlineContent = { Text("Exporter une sauvegarde") },

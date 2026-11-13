@@ -107,6 +107,45 @@ class MangaDexSource(override val lang: String) : Source {
         return (0 until files.length()).map { "$base/$folder/$hash/${files.getString(it)}" }
     }
 
+    /**
+     * Retrouve une série par son titre (titre principal ou titres alternatifs).
+     * Sert à l'import des sauvegardes Tachiyomi / Mihon.
+     */
+    suspend fun findByTitle(title: String): Manga? {
+        val target = normalize(title)
+        if (target.isEmpty()) return null
+        val url = api.newBuilder()
+            .addPathSegment("manga")
+            .addQueryParameter("limit", "10")
+            .addQueryParameter("title", title)
+            .addQueryParameter("includes[]", "cover_art")
+            .addQueryParameter("availableTranslatedLanguage[]", lang)
+            .addQueryParameter("order[relevance]", "desc")
+            .apply { feedRatings.forEach { addQueryParameter("contentRating[]", it) } }
+            .build()
+        val data = Http.getJson(url).getJSONArray("data")
+        var fallback: JSONObject? = null
+        for (i in 0 until data.length()) {
+            val o = data.getJSONObject(i)
+            val a = o.getJSONObject("attributes")
+            val names = mutableListOf<String>()
+            a.optJSONObject("title")?.let { t -> t.keys().forEach { names += t.optString(it) } }
+            a.optJSONArray("altTitles")?.let { arr ->
+                for (j in 0 until arr.length()) {
+                    arr.optJSONObject(j)?.let { t -> t.keys().forEach { names += t.optString(it) } }
+                }
+            }
+            val normalized = names.map { normalize(it) }.filter { it.isNotEmpty() }
+            if (normalized.any { it == target }) return parseManga(o)
+            if (fallback == null && target.length >= 6 &&
+                normalized.any { it.length >= 6 && (it.contains(target) || target.contains(it)) }
+            ) fallback = o
+        }
+        return fallback?.let { parseManga(it) }
+    }
+
+    private fun normalize(s: String): String = s.lowercase().filter { it.isLetterOrDigit() }
+
     // ---------------------------------------------------------------- parsing
 
     private fun parseManga(o: JSONObject): Manga {

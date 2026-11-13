@@ -232,6 +232,31 @@ object Library {
         save()
     }
 
+    /** Ajoute une série importée (sauvegarde Tachiyomi) avec ses chapitres lus. */
+    fun importEntry(manga: Manga, chapters: List<Chapter>, readIds: Collection<String>, lastReadAt: Long, addedAt: Long) {
+        MangaCache.put(manga)
+        ChapterCache.put(manga.key, chapters)
+        if (!contains(manga.key)) {
+            val added = if (addedAt > 0) addedAt else System.currentTimeMillis()
+            _entries.update { it + LibraryEntry(manga, added) }
+        }
+        rememberManga(manga)
+        storedChapters[manga.key] = chapters
+        val ids = readIds.toSet()
+        val newestRead = chapters.firstOrNull { it.id in ids }
+        _progress.update { map ->
+            val p = map[manga.key] ?: Progress()
+            map + (manga.key to p.copy(
+                read = p.read + ids,
+                lastChapterId = p.lastChapterId ?: newestRead?.id,
+                lastReadAt = if (newestRead != null) maxOf(p.lastReadAt, lastReadAt) else p.lastReadAt,
+            ))
+        }
+        recomputeUnread(manga.key)
+        saveChapters()
+        save()
+    }
+
     // ------------------------------------------------------- sauvegarde
 
     fun exportJson(): String = toJson().toString(2)
