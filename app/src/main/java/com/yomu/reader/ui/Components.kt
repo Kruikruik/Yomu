@@ -158,13 +158,15 @@ fun PageImage(
     modifier: Modifier = Modifier,
     scale: ContentScale = ContentScale.FillWidth,
     placeholderHeight: Dp = 480.dp,
+    crop: Boolean = false,
 ) {
     var attempt by remember(url) { mutableIntStateOf(0) }
     val context = LocalContext.current
-    val request = remember(url, attempt) {
+    val request = remember(url, attempt, crop) {
         ImageRequest.Builder(context)
             .data(url)
             .apply { headers.forEach { (k, v) -> addHeader(k, v) } }
+            .apply { if (crop) transformations(CropBorders()) }
             .setParameter("attempt", attempt, memoryCacheKey = null)
             .build()
     }

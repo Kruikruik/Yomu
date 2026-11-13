@@ -175,6 +175,57 @@ fun MoreScreen(onStats: () -> Unit = {}) {
             dismissButton = { TextButton(onClick = { aniListDialog = false }) { Text("Annuler") } },
         )
     }
+    var theme by remember { mutableStateOf(Prefs.theme.value) }
+    var volumeKeys by remember { mutableStateOf(Prefs.volumeKeys) }
+    var continuous by remember { mutableStateOf(Prefs.continuousWebtoon) }
+    var crop by remember { mutableStateOf(Prefs.cropBorders) }
+    var backupFolder by remember { mutableStateOf(Prefs.backupTreeUri) }
+    var showLog by remember { mutableStateOf(false) }
+    val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            } catch (_: SecurityException) {
+            }
+            Prefs.backupTreeUri = uri.toString()
+            backupFolder = uri.toString()
+            com.yomu.reader.data.BackupWorker.schedule(context, replace = true)
+            message = "Sauvegarde automatique activée (tous les jours, 7 gardées)"
+        }
+    }
+    if (showLog) {
+        val log = remember { com.yomu.reader.data.CrashLog.read() }
+        val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+        AlertDialog(
+            onDismissRequest = { showLog = false },
+            title = { Text("Journal des erreurs") },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    Text(
+                        log.ifEmpty { "Aucune erreur enregistrée 👍" },
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = log.isNotEmpty(), onClick = {
+                    clipboard.setText(androidx.compose.ui.text.AnnotatedString(log))
+                    message = "Journal copié : colle-le dans la conversation avec Claude"
+                    showLog = false
+                }) { Text("Copier") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    com.yomu.reader.data.CrashLog.clear()
+                    showLog = false
+                }) { Text("Effacer") }
+            },
+        )
+    }
     var listDialog by remember { mutableStateOf(false) }
     var listText by remember { mutableStateOf("") }
     if (listDialog) {
@@ -279,6 +330,18 @@ fun MoreScreen(onStats: () -> Unit = {}) {
                 supportingContent = { Text("Séries par statut, chapitres lus, genres préférés…") },
                 modifier = Modifier.clickable { onStats() },
             )
+
+            SectionTitle("Apparence")
+            listOf("dark" to "Sombre", "amoled" to "Noir pur (AMOLED)", "light" to "Clair").forEach { (value, label) ->
+                ListItem(
+                    headlineContent = { Text(label) },
+                    leadingContent = { RadioButton(selected = theme == value, onClick = null) },
+                    modifier = Modifier.clickable {
+                        theme = value
+                        Prefs.setTheme(value)
+                    },
+                )
+            }
 
             SectionTitle("Application")
             ListItem(
@@ -481,6 +544,40 @@ fun MoreScreen(onStats: () -> Unit = {}) {
                 )
             }
             ListItem(
+                headlineContent = { Text("Sauvegarde automatique") },
+                supportingContent = {
+                    Text(
+                        backupFolder?.let { "Chaque jour dans : " + android.net.Uri.decode(it).substringAfterLast(':').ifEmpty { "dossier choisi" } }
+                            ?: "Désactivée. Appuie pour choisir un dossier",
+                    )
+                },
+                trailingContent = {
+                    if (backupFolder != null) {
+                        TextButton(onClick = {
+                            scope.launch {
+                                message = try {
+                                    val name = withContext(Dispatchers.IO) { com.yomu.reader.data.BackupWorker.backupNow(context) }
+                                    "Sauvegarde enregistrée : $name"
+                                } catch (e: Exception) {
+                                    "Échec de la sauvegarde : ${e.message}"
+                                }
+                            }
+                        }) { Text("Maintenant") }
+                    }
+                },
+                modifier = Modifier.clickable { backupLauncher.launch(null) },
+            )
+            if (backupFolder != null) {
+                TextButton(
+                    onClick = {
+                        Prefs.backupTreeUri = null
+                        backupFolder = null
+                        com.yomu.reader.data.BackupWorker.schedule(context, replace = true)
+                    },
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                ) { Text("Désactiver la sauvegarde automatique") }
+            }
+            ListItem(
                 headlineContent = { Text("Exporter une sauvegarde") },
                 supportingContent = { Text("Bibliothèque, chapitres lus et historique (fichier .json)") },
                 modifier = Modifier.clickable {
@@ -495,6 +592,35 @@ fun MoreScreen(onStats: () -> Unit = {}) {
             )
 
             // ----------------------------------------------------- Lecteur
+            SectionTitle("Lecteur — options")
+            ListItem(
+                headlineContent = { Text("Tourner les pages avec le volume") },
+                supportingContent = { Text("Volume bas = suivant, volume haut = précédent") },
+                trailingContent = { Switch(checked = volumeKeys, onCheckedChange = null) },
+                modifier = Modifier.clickable {
+                    volumeKeys = !volumeKeys
+                    Prefs.volumeKeys = volumeKeys
+                },
+            )
+            ListItem(
+                headlineContent = { Text("Webtoon : lecture en continu") },
+                supportingContent = { Text("Enchaîne tout seul sur le chapitre suivant en bas de page") },
+                trailingContent = { Switch(checked = continuous, onCheckedChange = null) },
+                modifier = Modifier.clickable {
+                    continuous = !continuous
+                    Prefs.continuousWebtoon = continuous
+                },
+            )
+            ListItem(
+                headlineContent = { Text("Recadrer les marges blanches") },
+                supportingContent = { Text("Modes pages : retire les bords vides autour des planches") },
+                trailingContent = { Switch(checked = crop, onCheckedChange = null) },
+                modifier = Modifier.clickable {
+                    crop = !crop
+                    Prefs.cropBorders = crop
+                },
+            )
+
             SectionTitle("Lecteur — mode par défaut")
             ReaderMode.entries.forEach { m ->
                 ListItem(
@@ -534,6 +660,13 @@ fun MoreScreen(onStats: () -> Unit = {}) {
                         message = "Cache des images vidé"
                     }
                 },
+            )
+
+            SectionTitle("Diagnostic")
+            ListItem(
+                headlineContent = { Text("Journal des erreurs") },
+                supportingContent = { Text("Si l'appli plante ou qu'un chapitre ne charge pas : copie-le et envoie-le à Claude") },
+                modifier = Modifier.clickable { showLog = true },
             )
 
             SectionTitle("À propos")

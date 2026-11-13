@@ -22,6 +22,10 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -59,9 +63,46 @@ private val YomuColors = darkColorScheme(
     surfaceVariant = Color(0xFF2A2A2A),
 )
 
+private val AmoledColors = YomuColors.copy(
+    background = Color.Black,
+    surface = Color.Black,
+    surfaceVariant = Color(0xFF1A1A1A),
+    surfaceContainer = Color(0xFF0D0D0D),
+    surfaceContainerLow = Color(0xFF050505),
+    surfaceContainerHigh = Color(0xFF141414),
+)
+
+private val LightColors = lightColorScheme(
+    primary = Color(0xFFC2471B),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFFFDBCF),
+    onPrimaryContainer = Color(0xFF3A0B00),
+    secondary = Color(0xFFB26A00),
+)
+
 @Composable
 fun YomuTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = YomuColors, content = content)
+    val theme by Prefs.theme.collectAsState()
+    val light = theme == "light"
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            (view.context as? android.app.Activity)?.window?.let { w ->
+                WindowCompat.getInsetsController(w, view).apply {
+                    isAppearanceLightStatusBars = light
+                    isAppearanceLightNavigationBars = light
+                }
+            }
+        }
+    }
+    MaterialTheme(
+        colorScheme = when (theme) {
+            "light" -> LightColors
+            "amoled" -> AmoledColors
+            else -> YomuColors
+        },
+        content = content,
+    )
 }
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)

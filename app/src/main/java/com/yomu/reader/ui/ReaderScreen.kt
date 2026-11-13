@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -93,6 +95,7 @@ import com.yomu.reader.data.Downloads
 import com.yomu.reader.data.Library
 import com.yomu.reader.data.MangaCache
 import com.yomu.reader.data.Prefs
+import com.yomu.reader.data.ReaderKeys
 import com.yomu.reader.data.ReaderMode
 import com.yomu.reader.model.Chapter
 import com.yomu.reader.model.keyOf
@@ -130,6 +133,10 @@ fun ReaderScreen(sourceId: String, mangaId: String, initialChapterId: String, on
     val prefetched = remember { mutableMapOf<String, List<String>>() }
 
     ImmersiveMode()
+    DisposableEffect(Unit) {
+        ReaderKeys.active = true
+        onDispose { ReaderKeys.active = false }
+    }
 
     // Liste des chapitres (si l'appli a été relancée directement sur le lecteur).
     LaunchedEffect(key) {
@@ -246,6 +253,7 @@ fun ReaderScreen(sourceId: String, mangaId: String, initialChapterId: String, on
                             marginPercent = margin,
                             autoScroll = autoScroll && !showUi,
                             speed = speed,
+                            continuous = Prefs.continuousWebtoon,
                         )
                     } else {
                         PagedReader(
@@ -503,8 +511,34 @@ private fun WebtoonReader(
     marginPercent: Int,
     autoScroll: Boolean,
     speed: Int,
+    continuous: Boolean,
 ) {
     val state = rememberLazyListState(initialFirstVisibleItemIndex = initialPage.coerceIn(0, pages.lastIndex))
+    val nextCallback by rememberUpdatedState(onNext)
+
+    // Touches de volume : avance / recule d'environ un écran.
+    LaunchedEffect(state) {
+        ReaderKeys.events.collect { dir ->
+            val h = state.layoutInfo.viewportSize.height
+            state.animateScrollBy(dir * h * 0.85f)
+        }
+    }
+
+    // Lecture en continu : arrivé tout en bas, on enchaîne sur le chapitre suivant.
+    LaunchedEffect(state, nextChapter?.id, continuous) {
+        val next = nextChapter ?: return@LaunchedEffect
+        if (!continuous) return@LaunchedEffect
+        snapshotFlow {
+            val info = state.layoutInfo
+            val end = info.visibleItemsInfo.lastOrNull { it.index == pages.size }
+            end != null && end.offset + end.size / 2 <= info.viewportEndOffset && !state.canScrollForward
+        }.distinctUntilChanged().collect { atEnd ->
+            if (atEnd) {
+                kotlinx.coroutines.delay(700)
+                nextCallback(next)
+            }
+        }
+    }
     val sidePadding = (LocalConfiguration.current.screenWidthDp * marginPercent / 100f).dp
     val density = LocalDensity.current
 
@@ -601,14 +635,14 @@ private fun WebtoonReader(
                 )
             }
             item(key = "end", contentType = "end") {
-                ChapterEnd(nextChapter, onNext)
+                ChapterEnd(nextChapter, onNext, continuous)
             }
         }
     }
 }
 
 @Composable
-private fun ChapterEnd(next: Chapter?, onNext: (Chapter) -> Unit) {
+private fun ChapterEnd(next: Chapter?, onNext: (Chapter) -> Unit, continuous: Boolean = false) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -617,7 +651,11 @@ private fun ChapterEnd(next: Chapter?, onNext: (Chapter) -> Unit) {
     ) {
         Text("Fin du chapitre", style = MaterialTheme.typography.titleMedium, color = Color.White)
         Spacer(Modifier.height(12.dp))
-        if (next != null) {
+        if (next != null && continuous) {
+            Text("Chapitre suivant…", color = Color.White.copy(alpha = 0.7f))
+            Spacer(Modifier.height(8.dp))
+            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+        } else if (next != null) {
             Button(onClick = { onNext(next) }) {
                 Text("Suivant : ${next.title}", maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -647,6 +685,17 @@ private fun PagedReader(
     val pageCallback by rememberUpdatedState(onPageChanged)
     val endCallback by rememberUpdatedState(onEndReached)
     var zoomed by remember { mutableStateOf(false) }
+
+    // Touches de volume : page suivante / précédente.
+    LaunchedEffect(pagerState) {
+        ReaderKeys.events.collect { dir ->
+            val target = pagerState.currentPage + dir
+            when {
+                target > pages.lastIndex -> endCallback()
+                target >= 0 -> pagerState.animateScrollToPage(target)
+            }
+        }
+    }
 
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }
@@ -760,6 +809,12 @@ private fun ZoomablePage(
             },
         contentAlignment = Alignment.Center,
     ) {
-        PageImage(url = url, headers = headers, modifier = Modifier.fillMaxSize(), scale = ContentScale.Fit)
+        PageImage(
+            url = url,
+            headers = headers,
+            modifier = Modifier.fillMaxSize(),
+            scale = ContentScale.Fit,
+            crop = Prefs.cropBorders,
+        )
     }
 }

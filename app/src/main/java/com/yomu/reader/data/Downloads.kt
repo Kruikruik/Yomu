@@ -149,6 +149,9 @@ object Downloads {
     }
 
     private fun start() {
+        if (_queue.value.any { it.state == DownloadState.QUEUED }) {
+            runCatching { DownloadService.start(com.yomu.reader.YomuApplication.instance) }
+        }
         if (worker?.isActive == true) return
         worker = scope.launch {
             while (true) {
@@ -189,6 +192,7 @@ object Downloads {
         } catch (_: Removed) {
             dir.deleteRecursively()
         } catch (e: Exception) {
+            CrashLog.record("Téléchargement ${task.mangaTitle} / ${task.chapter.title}", e)
             setTask(task.id) { it.copy(state = DownloadState.ERROR, error = e.message ?: e.toString()) }
         }
     }

@@ -22,6 +22,7 @@ object Prefs {
 
     fun init(context: Context) {
         sp = context.getSharedPreferences("yomu", Context.MODE_PRIVATE)
+        theme.value = sp.getString("theme", "dark") ?: "dark"
     }
 
     var defaultMode: ReaderMode
@@ -83,6 +84,31 @@ object Prefs {
     var autoScrollSpeed: Int
         get() = sp.getInt("auto_scroll_speed", 4)
         set(value) { sp.edit().putInt("auto_scroll_speed", value).apply() }
+
+    /** Thème : "dark", "amoled" ou "light". */
+    val theme = kotlinx.coroutines.flow.MutableStateFlow("dark")
+
+    fun setTheme(value: String) {
+        theme.value = value
+        sp.edit().putString("theme", value).apply()
+    }
+
+    var volumeKeys: Boolean
+        get() = sp.getBoolean("volume_keys", true)
+        set(value) { sp.edit().putBoolean("volume_keys", value).apply() }
+
+    /** Webtoon : passe tout seul au chapitre suivant en bas de page. */
+    var continuousWebtoon: Boolean
+        get() = sp.getBoolean("continuous_webtoon", true)
+        set(value) { sp.edit().putBoolean("continuous_webtoon", value).apply() }
+
+    var cropBorders: Boolean
+        get() = sp.getBoolean("crop_borders", false)
+        set(value) { sp.edit().putBoolean("crop_borders", value).apply() }
+
+    var backupTreeUri: String?
+        get() = sp.getString("backup_tree", null)
+        set(value) { sp.edit().putString("backup_tree", value).apply() }
 
     var lastAppUpdateCheck: Long
         get() = sp.getLong("last_app_check", 0L)

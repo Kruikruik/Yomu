@@ -5,6 +5,9 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.yomu.reader.data.BackupWorker
+import com.yomu.reader.data.CrashLog
+import com.yomu.reader.data.DownloadService
 import com.yomu.reader.data.Downloads
 import com.yomu.reader.data.Library
 import com.yomu.reader.data.Prefs
@@ -16,11 +19,14 @@ class YomuApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        CrashLog.install(this)
         Prefs.init(this)
         Library.init(this)
         Downloads.init(this)
         UpdateWorker.createChannel(this)
         runCatching { UpdateWorker.schedule(this) }
+        DownloadService.createChannel(this)
+        runCatching { BackupWorker.schedule(this) }
     }
 
     companion object {
