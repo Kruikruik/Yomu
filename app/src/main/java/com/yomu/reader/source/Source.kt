@@ -70,7 +70,6 @@ object SourceManager {
     val all: List<Source> = listOf(
         MangaDexSource("en"),
         WebtoonSource(),
-        MangaPlusSource(),
         LocalSource(),
     ).map { BackgroundSource(it) }
 
