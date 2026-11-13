@@ -62,6 +62,34 @@ object TachiImport {
         scope.launch { run(bytes) }
     }
 
+    /**
+     * Import d'une liste de titres collée à la main (une série par ligne).
+     * Format accepté : « Titre » ou « Titre | 45 » (= lu jusqu'au chapitre 45).
+     */
+    fun startList(text: String) {
+        if (_state.value.running) return
+        val entries = text.lines().mapNotNull { line ->
+            val m = LIST_LINE.matchEntire(line.trim()) ?: return@mapNotNull null
+            val title = m.groupValues[1].trim()
+            if (title.isEmpty()) return@mapNotNull null
+            BackupEntry(
+                title = title,
+                url = "",
+                sourceName = "",
+                favorite = true,
+                dateAdded = 0L,
+                maxRead = m.groupValues[2].toFloatOrNull(),
+                lastRead = 0L,
+            )
+        }.distinctBy { it.title.lowercase() }
+        scope.launch {
+            _state.value = ImportState(running = true)
+            process(entries)
+        }
+    }
+
+    private val LIST_LINE = Regex("(?i)^(.*?)(?:\\s*[|;\\t]\\s*(?:ch(?:apter|apitre|\\.)?\\s*)?(\\d+(?:\\.\\d+)?))?\\s*$")
+
     fun dismiss() {
         if (!_state.value.running) _state.value = ImportState()
     }
@@ -77,14 +105,17 @@ object TachiImport {
             )
             return
         }
-        val favorites = entries.filter { it.favorite }
+        process(entries.filter { it.favorite })
+    }
+
+    private suspend fun process(favorites: List<BackupEntry>) {
         val source = SourceManager.all.filterIsInstance<MangaDexSource>().firstOrNull()
         if (source == null) {
             _state.value = ImportState(finished = true, error = "Aucune source MangaDex disponible.")
             return
         }
         if (favorites.isEmpty()) {
-            _state.value = ImportState(finished = true, error = "Aucune série dans la bibliothèque de cette sauvegarde.")
+            _state.value = ImportState(finished = true, error = "Aucune série à importer.")
             return
         }
 

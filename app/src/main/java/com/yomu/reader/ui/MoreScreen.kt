@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +19,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -126,12 +128,49 @@ fun MoreScreen() {
         }
     }
 
+    var listDialog by remember { mutableStateOf(false) }
+    var listText by remember { mutableStateOf("") }
+    if (listDialog) {
+        AlertDialog(
+            onDismissRequest = { listDialog = false },
+            title = { Text("Importer une liste de titres") },
+            text = {
+                Column {
+                    Text(
+                        "Une série par ligne. Ajoute « | numéro » pour marquer lu jusqu'à ce chapitre.\nExemple :\nMa série préférée | 120\nUne autre série",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedTextField(
+                        value = listText,
+                        onValueChange = { listText = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 160.dp, max = 320.dp)
+                            .padding(top = 8.dp),
+                        placeholder = { Text("Colle ta liste ici") },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = listText.isNotBlank() && !importState.running,
+                    onClick = {
+                        TachiImport.startList(listText)
+                        listDialog = false
+                        listText = ""
+                    },
+                ) { Text("Importer") }
+            },
+            dismissButton = { TextButton(onClick = { listDialog = false }) { Text("Annuler") } },
+        )
+    }
+
     release?.let { AppUpdateDialog(it, onDismiss = { release = null }) }
 
     if (importState.finished) {
         AlertDialog(
             onDismissRequest = { TachiImport.dismiss() },
-            title = { Text("Import Tachiyomi terminé") },
+            title = { Text("Import terminé") },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     if (importState.error != null) {
@@ -320,7 +359,7 @@ fun MoreScreen() {
             }
             if (importState.running) {
                 ListItem(
-                    headlineContent = { Text("Import Tachiyomi en cours… ${importState.done}/${importState.total}") },
+                    headlineContent = { Text("Import en cours… ${importState.done}/${importState.total}") },
                     supportingContent = {
                         Column {
                             Text(importState.current, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -342,6 +381,11 @@ fun MoreScreen() {
                     headlineContent = { Text("Importer une sauvegarde Tachiyomi / Mihon") },
                     supportingContent = { Text("Fichier .tachibk ou .proto.gz : séries et chapitres lus, retrouvés sur MangaDex") },
                     modifier = Modifier.clickable { tachiLauncher.launch(arrayOf("*/*")) },
+                )
+                ListItem(
+                    headlineContent = { Text("Importer une liste de titres") },
+                    supportingContent = { Text("Tes favoris d'un autre site, collés à la main : retrouvés sur MangaDex") },
+                    modifier = Modifier.clickable { listDialog = true },
                 )
             }
             ListItem(
