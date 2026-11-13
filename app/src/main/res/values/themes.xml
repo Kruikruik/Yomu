@@ -1,0 +1,10 @@
+<resources>
+    <color name="yomu_bg">#FF121212</color>
+    <color name="yomu_icon_bg">#FF1E1E2E</color>
+
+    <style name="Theme.Yomu" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/yomu_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
