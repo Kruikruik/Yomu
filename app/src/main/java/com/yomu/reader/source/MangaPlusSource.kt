@@ -192,7 +192,8 @@ class MangaPlusSource : Source {
         val out = mutableListOf<String>()
         for (i in 0 until pages.length()) {
             val p = pages.getJSONObject(i).optJSONObject("mangaPage") ?: continue
-            val url = p.optString("imageUrl").ifEmpty { continue }
+            val url = p.optString("imageUrl")
+            if (url.isEmpty()) continue
             val key = p.optString("encryptionKey")
             out += if (key.isNotEmpty()) "$url#yomukey=$key" else url
         }
