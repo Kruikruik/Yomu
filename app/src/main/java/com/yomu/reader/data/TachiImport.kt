@@ -1,6 +1,5 @@
 package com.yomu.reader.data
 
-import com.yomu.reader.source.MangaDexSource
 import com.yomu.reader.source.SourceManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -109,7 +108,7 @@ object TachiImport {
     }
 
     private suspend fun process(favorites: List<BackupEntry>) {
-        val source = SourceManager.all.filterIsInstance<MangaDexSource>().firstOrNull()
+        val source = SourceManager.get("mangadex-en")
         if (source == null) {
             _state.value = ImportState(finished = true, error = "Aucune source MangaDex disponible.")
             return

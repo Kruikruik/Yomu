@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import com.yomu.reader.data.PageSizes
 import com.yomu.reader.model.Manga
 
 @Composable
@@ -167,25 +168,30 @@ fun PageImage(
             .setParameter("attempt", attempt, memoryCacheKey = null)
             .build()
     }
+    // Si on connaît déjà les proportions de la page, l'emplacement a tout de suite la bonne taille.
+    val ratio = if (scale == ContentScale.FillWidth) PageSizes.get(url) else null
+    val placeholder = if (ratio != null) {
+        Modifier.fillMaxWidth().aspectRatio(ratio)
+    } else {
+        Modifier.fillMaxWidth().height(placeholderHeight)
+    }
     SubcomposeAsyncImage(
         model = request,
         contentDescription = null,
         modifier = modifier,
         contentScale = scale,
+        onSuccess = { state ->
+            val d = state.result.drawable
+            if (d.intrinsicWidth > 0 && d.intrinsicHeight > 0) {
+                PageSizes.put(url, d.intrinsicWidth.toFloat() / d.intrinsicHeight)
+            }
+        },
         loading = {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(placeholderHeight),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+            Box(placeholder, contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         },
         error = {
             Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(placeholderHeight)
-                    .clickable { attempt++ },
+                placeholder.clickable { attempt++ },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(

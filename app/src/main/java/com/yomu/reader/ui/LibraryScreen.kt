@@ -199,7 +199,9 @@ fun LibraryScreen(onOpen: (Manga) -> Unit, onRead: (key: String, chapterId: Stri
                     items(shown, key = { it.manga.key }) { entry ->
                         val key = entry.manga.key
                         val dl = downloadCounts[key] ?: 0
-                        val resume = if (entry.unread > 0) Library.resumeChapter(key) else null
+                        val resume = remember(key, entry.unread, progress[key]) {
+                            if (entry.unread > 0) Library.resumeChapter(key) else null
+                        }
                         MangaCard(
                             manga = entry.manga,
                             badge = if (entry.unread > 0) entry.unread.toString() else null,

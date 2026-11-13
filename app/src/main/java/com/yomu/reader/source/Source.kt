@@ -3,6 +3,8 @@ package com.yomu.reader.source
 import com.yomu.reader.model.Chapter
 import com.yomu.reader.model.Manga
 import com.yomu.reader.model.MangasPage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Une source de lecture. Pour en ajouter une : créer une classe qui implémente
@@ -40,9 +42,22 @@ object SourceManager {
         MangaDexSource("en"),
         WebtoonSource(),
         LocalSource(),
-    )
+    ).map { BackgroundSource(it) }
 
     fun get(id: String): Source? = all.firstOrNull { it.id == id }
+}
+
+/** Exécute tout le travail d'une source hors du thread de l'interface (pas de saccades). */
+private class BackgroundSource(private val inner: Source) : Source by inner {
+    override suspend fun popular(page: Int): MangasPage = withContext(Dispatchers.Default) { inner.popular(page) }
+    override suspend fun latest(page: Int): MangasPage = withContext(Dispatchers.Default) { inner.latest(page) }
+    override suspend fun search(query: String, page: Int): MangasPage =
+        withContext(Dispatchers.Default) { inner.search(query, page) }
+    override suspend fun details(mangaId: String): Manga = withContext(Dispatchers.Default) { inner.details(mangaId) }
+    override suspend fun chapters(mangaId: String): List<Chapter> =
+        withContext(Dispatchers.Default) { inner.chapters(mangaId) }
+    override suspend fun pages(chapterId: String): List<String> = withContext(Dispatchers.Default) { inner.pages(chapterId) }
+    override suspend fun findByTitle(title: String): Manga? = withContext(Dispatchers.Default) { inner.findByTitle(title) }
 }
 
 fun langName(code: String): String = when (code) {

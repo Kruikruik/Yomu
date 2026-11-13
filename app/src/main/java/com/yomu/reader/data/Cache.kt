@@ -15,5 +15,13 @@ object MangaCache {
 object ChapterCache {
     private val map = ConcurrentHashMap<String, List<Chapter>>()
     fun put(key: String, chapters: List<Chapter>) { map[key] = chapters }
+    fun putIfAbsent(key: String, chapters: List<Chapter>) { map.putIfAbsent(key, chapters) }
     fun get(key: String): List<Chapter>? = map[key]
+}
+
+/** Proportions des pages déjà vues : évite que le lecteur « saute » quand on remonte. */
+object PageSizes {
+    private val cache = android.util.LruCache<String, Float>(3000)
+    fun get(url: String): Float? = cache.get(url)
+    fun put(url: String, ratio: Float) { if (ratio > 0f) cache.put(url, ratio) }
 }

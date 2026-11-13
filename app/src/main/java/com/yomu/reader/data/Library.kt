@@ -9,6 +9,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +24,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 data class LibraryEntry(val manga: Manga, val addedAt: Long, val unread: Int = 0)
 
@@ -73,8 +77,11 @@ object Library {
         file = File(context.filesDir, "library.json")
         chaptersFile = File(context.filesDir, "chapters.json")
         if (file.exists()) runCatching { load(JSONObject(file.readText())) }
-        if (chaptersFile.exists()) runCatching { loadChapters(JSONObject(chaptersFile.readText())) }
-        storedChapters.forEach { (k, v) -> ChapterCache.put(k, v) }
+        // Le gros fichier des chapitres se charge en arrière-plan : démarrage plus rapide.
+        scope.launch {
+            if (chaptersFile.exists()) runCatching { loadChapters(JSONObject(chaptersFile.readText())) }
+            storedChapters.forEach { (k, v) -> ChapterCache.putIfAbsent(k, v) }
+        }
     }
 
     // ------------------------------------------------------------ lecture
@@ -162,28 +169,36 @@ object Library {
 
     suspend fun refreshAll(): RefreshResult = refreshMutex.withLock {
         _refreshing.value = true
-        var total = 0
-        val names = mutableListOf<String>()
+        val total = AtomicInteger(0)
+        val names = java.util.Collections.synchronizedList(mutableListOf<String>())
         try {
-            for (entry in _entries.value) {
-                val source = SourceManager.get(entry.manga.sourceId) ?: continue
-                try {
-                    val n = updateChapters(entry.manga.key, source.chapters(entry.manga.id))
-                    if (n > 0) {
-                        total += n
-                        names += entry.manga.title
+            // Une file par source, toutes les sources en parallèle : beaucoup plus rapide.
+            coroutineScope {
+                _entries.value.groupBy { it.manga.sourceId }.map { (sourceId, list) ->
+                    async {
+                        val source = SourceManager.get(sourceId) ?: return@async
+                        val pause = if (sourceId == "local") 0L else 200L
+                        for (entry in list) {
+                            try {
+                                val n = updateChapters(entry.manga.key, source.chapters(entry.manga.id))
+                                if (n > 0) {
+                                    total.addAndGet(n)
+                                    names += entry.manga.title
+                                }
+                            } catch (ce: CancellationException) {
+                                throw ce
+                            } catch (_: Exception) {
+                                // série suivante
+                            }
+                            delay(pause) // reste gentil avec les sites
+                        }
                     }
-                } catch (ce: CancellationException) {
-                    throw ce
-                } catch (_: Exception) {
-                    // série suivante
-                }
-                delay(250) // reste gentil avec l'API
+                }.awaitAll()
             }
         } finally {
             _refreshing.value = false
         }
-        RefreshResult(total, names)
+        RefreshResult(total.get(), names.toList())
     }
 
     fun clearUpdates() {
@@ -418,7 +433,7 @@ object Library {
         while (keys.hasNext()) {
             val key = keys.next()
             val arr = json.optJSONArray(key) ?: continue
-            storedChapters[key] = (0 until arr.length()).mapNotNull { chapterFromJson(arr.getJSONObject(it)) }
+            storedChapters.putIfAbsent(key, (0 until arr.length()).mapNotNull { chapterFromJson(arr.getJSONObject(it)) })
         }
     }
 

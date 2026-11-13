@@ -180,7 +180,7 @@ fun ReaderScreen(sourceId: String, mangaId: String, initialChapterId: String, on
             val request = ImageRequest.Builder(context)
                 .data(list[i])
                 .apply { headers.forEach { (k, v) -> addHeader(k, v) } }
-                .size(720)
+                .size(96) // décodage minuscule : le but est juste de remplir le cache disque
                 .memoryCachePolicy(CachePolicy.DISABLED)
                 .build()
             context.imageLoader.enqueue(request)
@@ -201,7 +201,7 @@ fun ReaderScreen(sourceId: String, mangaId: String, initialChapterId: String, on
                     ImageRequest.Builder(context)
                         .data(url)
                         .apply { headers.forEach { (k, v) -> addHeader(k, v) } }
-                        .size(720)
+                        .size(96) // décodage minuscule : le but est juste de remplir le cache disque
                         .memoryCachePolicy(CachePolicy.DISABLED)
                         .build()
                 )
@@ -490,10 +490,10 @@ private fun WebtoonReader(
                     )
                 },
         ) {
-            itemsIndexed(pages, key = { i, _ -> i }) { _, url ->
+            itemsIndexed(pages, key = { i, _ -> i }, contentType = { _, _ -> "page" }) { _, url ->
                 PageImage(url = url, headers = headers, modifier = Modifier.fillMaxWidth())
             }
-            item(key = "end") {
+            item(key = "end", contentType = "end") {
                 ChapterEnd(nextChapter, onNext)
             }
         }

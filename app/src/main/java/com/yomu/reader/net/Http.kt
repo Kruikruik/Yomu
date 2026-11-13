@@ -2,6 +2,8 @@ package com.yomu.reader.net
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -14,6 +16,11 @@ object Http {
 
     val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
+            .dispatcher(Dispatcher().apply {
+                maxRequests = 64
+                maxRequestsPerHost = 12 // plusieurs pages d'un chapitre en parallèle
+            })
+            .connectionPool(ConnectionPool(16, 5, TimeUnit.MINUTES))
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(40, TimeUnit.SECONDS)
             .addInterceptor { chain ->
@@ -42,5 +49,8 @@ object Http {
             }
         }
 
-    suspend fun getJson(url: HttpUrl): JSONObject = JSONObject(getString(url))
+    suspend fun getJson(url: HttpUrl): JSONObject {
+        val text = getString(url)
+        return withContext(Dispatchers.Default) { JSONObject(text) }
+    }
 }

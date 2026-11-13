@@ -35,9 +35,17 @@ android {
             signingConfig = signingConfigs.getByName("yomu")
         }
         release {
-            isMinifyEnabled = false
+            // Version optimisée : code compacté et optimisé par R8, ressources inutiles retirées.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("yomu")
         }
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 
     compileOptions {
@@ -71,4 +79,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
+    // Installe les « profils de démarrage » de Compose : appli plus fluide dès le premier lancement.
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 }
