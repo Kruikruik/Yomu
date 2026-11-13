@@ -55,6 +55,11 @@ object Prefs {
         get() = sp.getInt("update_interval", 12)
         set(value) { sp.edit().putInt("update_interval", value).apply() }
 
+    /** Dossier choisi pour la source « Fichiers locaux » (URI SAF). */
+    var localTreeUri: String?
+        get() = sp.getString("local_tree", null)
+        set(value) { sp.edit().putString("local_tree", value).apply() }
+
     var lastAppUpdateCheck: Long
         get() = sp.getLong("last_app_check", 0L)
         set(value) { sp.edit().putLong("last_app_check", value).apply() }

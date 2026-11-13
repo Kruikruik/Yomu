@@ -15,11 +15,17 @@ class YomuApplication : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         Prefs.init(this)
         Library.init(this)
         Downloads.init(this)
         UpdateWorker.createChannel(this)
         runCatching { UpdateWorker.schedule(this) }
+    }
+
+    companion object {
+        lateinit var instance: YomuApplication
+            private set
     }
 
     override fun newImageLoader(): ImageLoader =

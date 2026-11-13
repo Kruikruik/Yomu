@@ -111,7 +111,7 @@ class MangaDexSource(override val lang: String) : Source {
      * Retrouve une série par son titre (titre principal ou titres alternatifs).
      * Sert à l'import des sauvegardes Tachiyomi / Mihon.
      */
-    suspend fun findByTitle(title: String): Manga? {
+    override suspend fun findByTitle(title: String): Manga? {
         val target = normalize(title)
         if (target.isEmpty()) return null
         val url = api.newBuilder()
@@ -144,7 +144,7 @@ class MangaDexSource(override val lang: String) : Source {
         return fallback?.let { parseManga(it) }
     }
 
-    private fun normalize(s: String): String = s.lowercase().filter { it.isLetterOrDigit() }
+    private fun normalize(s: String): String = normalizeTitle(s)
 
     // ---------------------------------------------------------------- parsing
 

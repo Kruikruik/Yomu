@@ -18,12 +18,13 @@ object Http {
             .readTimeout(40, TimeUnit.SECONDS)
             .addInterceptor { chain ->
                 val req = chain.request()
-                val out = if (req.header("User-Agent") == null) {
-                    req.newBuilder().header("User-Agent", USER_AGENT).build()
-                } else {
-                    req
+                val builder = req.newBuilder()
+                if (req.header("User-Agent") == null) builder.header("User-Agent", USER_AGENT)
+                // Les images de Webtoon (pstatic.net) exigent le Referer du site.
+                if (req.url.host.endsWith("pstatic.net") && req.header("Referer") == null) {
+                    builder.header("Referer", "https://www.webtoons.com/")
                 }
-                chain.proceed(out)
+                chain.proceed(builder.build())
             }
             .build()
     }

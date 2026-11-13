@@ -132,11 +132,12 @@ object TachiImport {
                     } catch (_: Exception) {
                         null
                     }
-                } ?: source.findByTitle(entry.title)
-                if (manga == null) {
+                } ?: findAnywhere(entry.title)
+                val mangaSource = manga?.let { SourceManager.get(it.sourceId) }
+                if (manga == null || mangaSource == null) {
                     notFound += entry.title
                 } else {
-                    val chapters = source.chapters(manga.id)
+                    val chapters = mangaSource.chapters(manga.id)
                     val max = entry.maxRead
                     val readIds = if (max == null) {
                         emptyList()
@@ -160,6 +161,20 @@ object TachiImport {
             imported = imported,
             notFound = notFound,
         )
+    }
+
+    /** Cherche la série sur toutes les sources en ligne, dans l'ordre (MangaDex d'abord). */
+    private suspend fun findAnywhere(title: String): com.yomu.reader.model.Manga? {
+        for (src in SourceManager.all) {
+            if (src.id == "local") continue
+            try {
+                src.findByTitle(title)?.let { return it }
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (_: Exception) {
+            }
+        }
+        return null
     }
 
     // --------------------------------------------------- lecture protobuf

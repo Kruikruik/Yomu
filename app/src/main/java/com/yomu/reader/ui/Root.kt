@@ -186,7 +186,17 @@ fun YomuRoot(startTab: String? = null) {
                 )
             }
             composable("sources") {
-                SourcesScreen(onOpen = { s -> nav.navigate("browse/${Uri.encode(s.id)}") })
+                SourcesScreen(
+                    onOpen = { s -> nav.navigate("browse/${Uri.encode(s.id)}") },
+                    onGlobalSearch = { q -> nav.navigate("search/${Uri.encode(q)}") },
+                )
+            }
+            composable("search/{query}") { entry ->
+                GlobalSearchScreen(
+                    query = entry.arguments?.getString("query").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                    onOpen = { m -> nav.navigate(mangaRoute(m.sourceId, m.id)) },
+                )
             }
             composable("more") {
                 MoreScreen()

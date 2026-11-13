@@ -27,11 +27,19 @@ interface Source {
 
     /** URLs des images d'un chapitre, dans l'ordre de lecture. */
     suspend fun pages(chapterId: String): List<String>
+
+    /** Retrouve une série par son titre exact (pour les imports). null = pas trouvée / pas géré. */
+    suspend fun findByTitle(title: String): Manga? = null
 }
+
+/** Compare deux titres en ignorant casse, ponctuation et espaces. */
+fun normalizeTitle(s: String): String = s.lowercase().filter { it.isLetterOrDigit() }
 
 object SourceManager {
     val all: List<Source> = listOf(
         MangaDexSource("en"),
+        WebtoonSource(),
+        LocalSource(),
     )
 
     fun get(id: String): Source? = all.firstOrNull { it.id == id }
@@ -40,5 +48,6 @@ object SourceManager {
 fun langName(code: String): String = when (code) {
     "fr" -> "Français"
     "en" -> "Anglais"
+    "local" -> "Fichiers du téléphone"
     else -> code.uppercase()
 }

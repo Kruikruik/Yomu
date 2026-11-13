@@ -128,6 +128,21 @@ fun MoreScreen() {
         }
     }
 
+    var localFolder by remember { mutableStateOf(Prefs.localTreeUri) }
+    val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            } catch (_: SecurityException) {
+            }
+            Prefs.localTreeUri = uri.toString()
+            localFolder = uri.toString()
+            message = "Dossier des fichiers locaux enregistré"
+        }
+    }
     var listDialog by remember { mutableStateOf(false) }
     var listText by remember { mutableStateOf("") }
     if (listDialog) {
@@ -179,7 +194,7 @@ fun MoreScreen() {
                         Text("${importState.imported} série(s) ajoutée(s) à ta bibliothèque, avec les chapitres lus.")
                         if (importState.notFound.isNotEmpty()) {
                             Text(
-                                "\nPas trouvées sur MangaDex (${importState.notFound.size}) :",
+                                "\nPas trouvées (${importState.notFound.size}) :",
                                 style = MaterialTheme.typography.titleSmall,
                             )
                             importState.notFound.forEach {
@@ -334,6 +349,19 @@ fun MoreScreen() {
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
 
+            // ------------------------------------------------ Fichiers locaux
+            SectionTitle("Fichiers locaux")
+            ListItem(
+                headlineContent = { Text("Dossier des mangas sur le téléphone") },
+                supportingContent = {
+                    Text(
+                        localFolder?.let { android.net.Uri.decode(it).substringAfterLast(':').ifEmpty { "Dossier choisi" } }
+                            ?: "Aucun. Structure : Dossier / Série / Chapitre (dossier d'images ou .cbz)",
+                    )
+                },
+                modifier = Modifier.clickable { folderLauncher.launch(null) },
+            )
+
             // ----------------------------------------------- Bibliothèque
             SectionTitle("Bibliothèque")
             ListItem(
@@ -379,12 +407,12 @@ fun MoreScreen() {
             } else {
                 ListItem(
                     headlineContent = { Text("Importer une sauvegarde Tachiyomi / Mihon") },
-                    supportingContent = { Text("Fichier .tachibk ou .proto.gz : séries et chapitres lus, retrouvés sur MangaDex") },
+                    supportingContent = { Text("Fichier .tachibk ou .proto.gz : séries et chapitres lus, retrouvés sur MangaDex ou Webtoon") },
                     modifier = Modifier.clickable { tachiLauncher.launch(arrayOf("*/*")) },
                 )
                 ListItem(
                     headlineContent = { Text("Importer une liste de titres") },
-                    supportingContent = { Text("Tes favoris d'un autre site, collés à la main : retrouvés sur MangaDex") },
+                    supportingContent = { Text("Tes favoris d'un autre site, collés à la main : retrouvés sur MangaDex ou Webtoon") },
                     modifier = Modifier.clickable { listDialog = true },
                 )
             }

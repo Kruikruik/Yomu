@@ -348,7 +348,7 @@ fun DetailsScreen(sourceId: String, mangaId: String, onBack: () -> Unit, onRead:
                     }
                     if (chapters != null && list.isEmpty()) {
                         item(key = "empty") {
-                            Text("Aucun chapitre disponible en anglais.", modifier = Modifier.padding(16.dp))
+                            Text("Aucun chapitre disponible.", modifier = Modifier.padding(16.dp))
                         }
                     }
                     items(shown, key = { it.id }) { ch ->
