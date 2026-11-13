@@ -82,7 +82,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import coil.imageLoader
 import coil.request.CachePolicy
 import coil.request.ImageRequest
-import com.yomu.reader.data.ChapterCache
+import com.yomu.reader.data.Downloads
 import com.yomu.reader.data.Library
 import com.yomu.reader.data.MangaCache
 import com.yomu.reader.data.Prefs
@@ -108,13 +108,15 @@ fun ReaderScreen(sourceId: String, mangaId: String, initialChapterId: String, on
 
     var chapterId by rememberSaveable { mutableStateOf(initialChapterId) }
     var currentPage by rememberSaveable { mutableIntStateOf(startPageFor(initialChapterId)) }
-    var chapters by remember { mutableStateOf(ChapterCache.get(key).orEmpty()) }
+    var chapters by remember { mutableStateOf(Library.chaptersFor(key).orEmpty()) }
     var loaded by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableIntStateOf(0) }
     var mode by remember { mutableStateOf(Prefs.modeFor(key)) }
     var showUi by remember { mutableStateOf(false) }
     var jumpTo by remember { mutableStateOf<Int?>(null) }
+    // Pages du chapitre suivant chargées à l'avance (passage instantané).
+    val prefetched = remember { mutableMapOf<String, List<String>>() }
 
     ImmersiveMode()
 
@@ -123,7 +125,7 @@ fun ReaderScreen(sourceId: String, mangaId: String, initialChapterId: String, on
         if (chapters.isEmpty() && source != null) {
             try {
                 val ch = source.chapters(mangaId)
-                ChapterCache.put(key, ch)
+                Library.updateChapters(key, ch)
                 chapters = ch
             } catch (ce: CancellationException) {
                 throw ce
@@ -141,7 +143,9 @@ fun ReaderScreen(sourceId: String, mangaId: String, initialChapterId: String, on
             return@LaunchedEffect
         }
         try {
-            loaded = chapterId to source.pages(chapterId)
+            val local = Downloads.localPages(key, chapterId)
+            val cached = prefetched[chapterId]
+            loaded = chapterId to (local ?: cached ?: source.pages(chapterId))
         } catch (ce: CancellationException) {
             throw ce
         } catch (e: Exception) {
@@ -170,6 +174,7 @@ fun ReaderScreen(sourceId: String, mangaId: String, initialChapterId: String, on
     // Précharge les pages suivantes.
     LaunchedEffect(pages, currentPage) {
         val list = pages ?: return@LaunchedEffect
+        if (list.firstOrNull()?.startsWith("file://") == true) return@LaunchedEffect
         val end = minOf(currentPage + 4, list.lastIndex)
         for (i in (currentPage + 1)..end) {
             val request = ImageRequest.Builder(context)
@@ -179,6 +184,31 @@ fun ReaderScreen(sourceId: String, mangaId: String, initialChapterId: String, on
                 .memoryCachePolicy(CachePolicy.DISABLED)
                 .build()
             context.imageLoader.enqueue(request)
+        }
+    }
+
+    // Près de la fin : prépare le chapitre suivant (liste des pages + premières images).
+    LaunchedEffect(pages, currentPage >= (pages?.size ?: Int.MAX_VALUE) - 4, nextChapter?.id) {
+        val list = pages ?: return@LaunchedEffect
+        val next = nextChapter ?: return@LaunchedEffect
+        if (source == null || currentPage < list.size - 4) return@LaunchedEffect
+        if (next.id in prefetched || Downloads.isDownloaded(key, next.id)) return@LaunchedEffect
+        try {
+            val nextPages = source.pages(next.id)
+            prefetched[next.id] = nextPages
+            nextPages.take(3).forEach { url ->
+                context.imageLoader.enqueue(
+                    ImageRequest.Builder(context)
+                        .data(url)
+                        .apply { headers.forEach { (k, v) -> addHeader(k, v) } }
+                        .size(720)
+                        .memoryCachePolicy(CachePolicy.DISABLED)
+                        .build()
+                )
+            }
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Exception) {
         }
     }
 

@@ -4,9 +4,16 @@ import android.content.Context
 import android.content.SharedPreferences
 
 enum class ReaderMode(val label: String) {
-    WEBTOON("Webtoon (défilement vertical)"),
+    WEBTOON("Webtoon (haut → bas)"),
     PAGED_RTL("Manga (droite → gauche)"),
     PAGED_LTR("Pages (gauche → droite)"),
+}
+
+enum class LibrarySort(val label: String) {
+    TITLE("Titre"),
+    UNREAD("Non lus"),
+    LAST_READ("Dernière lecture"),
+    ADDED("Date d'ajout"),
 }
 
 object Prefs {
@@ -16,14 +23,12 @@ object Prefs {
         sp = context.getSharedPreferences("yomu", Context.MODE_PRIVATE)
     }
 
-    private fun parseMode(s: String?): ReaderMode? =
-        ReaderMode.entries.firstOrNull { it.name == s }
-
     var defaultMode: ReaderMode
-        get() = parseMode(sp.getString("mode", null)) ?: ReaderMode.WEBTOON
+        get() = ReaderMode.entries.firstOrNull { it.name == sp.getString("mode", null) } ?: ReaderMode.WEBTOON
         set(value) { sp.edit().putString("mode", value.name).apply() }
 
-    fun modeFor(key: String): ReaderMode = parseMode(sp.getString("mode_$key", null)) ?: defaultMode
+    fun modeFor(key: String): ReaderMode =
+        ReaderMode.entries.firstOrNull { it.name == sp.getString("mode_$key", null) } ?: defaultMode
 
     fun setModeFor(key: String, mode: ReaderMode) {
         sp.edit().putString("mode_$key", mode.name).apply()
@@ -32,4 +37,25 @@ object Prefs {
     var dataSaver: Boolean
         get() = sp.getBoolean("data_saver", false)
         set(value) { sp.edit().putBoolean("data_saver", value).apply() }
+
+    var librarySort: LibrarySort
+        get() = LibrarySort.entries.firstOrNull { it.name == sp.getString("lib_sort", null) } ?: LibrarySort.UNREAD
+        set(value) { sp.edit().putString("lib_sort", value.name).apply() }
+
+    var filterUnread: Boolean
+        get() = sp.getBoolean("filter_unread", false)
+        set(value) { sp.edit().putBoolean("filter_unread", value).apply() }
+
+    var filterDownloaded: Boolean
+        get() = sp.getBoolean("filter_downloaded", false)
+        set(value) { sp.edit().putBoolean("filter_downloaded", value).apply() }
+
+    /** Intervalle de vérification auto des nouveaux chapitres, en heures (0 = désactivé). */
+    var updateInterval: Int
+        get() = sp.getInt("update_interval", 12)
+        set(value) { sp.edit().putInt("update_interval", value).apply() }
+
+    var lastAppUpdateCheck: Long
+        get() = sp.getLong("last_app_check", 0L)
+        set(value) { sp.edit().putLong("last_app_check", value).apply() }
 }

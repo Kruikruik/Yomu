@@ -40,4 +40,7 @@ jobs:
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest Yomu.apk \
             --title "Yomu (dernière version)" \
-            --notes "Compilé automatiquement depuis le commit ${GITHUB_SHA::7}."
+            --notes "Compilé automatiquement depuis le commit ${GITHUB_SHA::7}.
+
+          versionCode: ${GITHUB_RUN_NUMBER}
+          versionName: 2.0.${GITHUB_RUN_NUMBER}"

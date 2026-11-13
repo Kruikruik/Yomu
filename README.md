@@ -4,6 +4,11 @@ Appli Android inspirée de Tachiyomi, écrite en Kotlin + Jetpack Compose.
 
 ## Ce que fait l'appli
 
+**v2** : onglets Nouveautés et Historique, téléchargements hors-ligne, tri/filtre/recherche
+dans la bibliothèque, sélection multiple des chapitres (appui long), vérification automatique
+des nouveaux chapitres avec notification, sauvegarde/restauration, et bouton
+**Plus → Mettre à jour l'appli** qui installe la dernière version publiée sur GitHub.
+
 - **Explorer** : séries populaires, récentes, recherche par titre (source : MangaDex, en anglais).
 - **Fiche série** : couverture, auteur, statut, genres, résumé, liste des chapitres, bouton « Commencer / Continuer ».
 - **Bibliothèque** : ajoute tes séries avec ♥, nombre de chapitres non lus, bouton ⟳ pour chercher les nouveaux chapitres.

@@ -12,8 +12,11 @@ android {
         applicationId = "com.yomu.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // Sur GitHub Actions, le numéro de build sert de numéro de version
+        // (c'est ce que compare le bouton « Mettre à jour l'appli »).
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = "2.0.$build"
     }
 
     // Clé de signature fixe : chaque nouvelle version s'installe par-dessus
@@ -46,6 +49,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -65,4 +69,5 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
 }

@@ -11,10 +11,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val startTab = intent?.getStringExtra(EXTRA_TAB)
         setContent {
             YomuTheme {
-                YomuRoot()
+                YomuRoot(startTab = startTab)
             }
         }
+    }
+
+    companion object {
+        const val EXTRA_TAB = "tab"
     }
 }
