@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -40,6 +41,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -102,7 +104,45 @@ fun DetailsScreen(sourceId: String, mangaId: String, onBack: () -> Unit, onRead:
     val progressMap by Library.progress.collectAsState()
     val downloaded by Downloads.downloaded.collectAsState()
     val queue by Downloads.queue.collectAsState()
-    val inLibrary = entries.any { it.manga.key == key }
+    val entry = entries.firstOrNull { it.manga.key == key }
+    val inLibrary = entry != null
+    var categoryDialog by remember { mutableStateOf(false) }
+    if (categoryDialog) {
+        val existing = remember(entries) { entries.mapNotNull { it.category }.distinct().sortedBy { it.lowercase() } }
+        var text by remember { mutableStateOf(entry?.category.orEmpty()) }
+        AlertDialog(
+            onDismissRequest = { categoryDialog = false },
+            title = { Text("Catégorie") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = text,
+                        onValueChange = { text = it },
+                        singleLine = true,
+                        placeholder = { Text("Nouvelle catégorie (ex. À lire)") },
+                    )
+                    existing.forEach { c ->
+                        TextButton(onClick = {
+                            Library.setCategory(key, c)
+                            categoryDialog = false
+                        }) { Text(c) }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    Library.setCategory(key, text)
+                    categoryDialog = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    Library.setCategory(key, null)
+                    categoryDialog = false
+                }) { Text("Aucune") }
+            },
+        )
+    }
     val progress = progressMap[key] ?: Progress()
     val list = chapters.orEmpty()
 
@@ -285,6 +325,8 @@ fun DetailsScreen(sourceId: String, mangaId: String, onBack: () -> Unit, onRead:
                             sourceLabel = source?.let { "${it.name} • ${langName(it.lang)}" }.orEmpty(),
                             inLibrary = inLibrary,
                             onToggle = { Library.toggle(m, chapters) },
+                            category = entry?.category,
+                            onCategory = { categoryDialog = true },
                         )
                     }
                     m.description?.let { desc ->
@@ -383,7 +425,14 @@ fun DetailsScreen(sourceId: String, mangaId: String, onBack: () -> Unit, onRead:
 }
 
 @Composable
-private fun Header(manga: Manga, sourceLabel: String, inLibrary: Boolean, onToggle: () -> Unit) {
+private fun Header(
+    manga: Manga,
+    sourceLabel: String,
+    inLibrary: Boolean,
+    onToggle: () -> Unit,
+    category: String?,
+    onCategory: () -> Unit,
+) {
     Row(Modifier.padding(16.dp)) {
         AsyncImage(
             model = manga.cover,
@@ -414,6 +463,11 @@ private fun Header(manga: Manga, sourceLabel: String, inLibrary: Boolean, onTogg
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(if (inLibrary) "Dans la bibliothèque" else "Ajouter")
+            }
+            if (inLibrary) {
+                TextButton(onClick = onCategory) {
+                    Text(if (category != null) "Catégorie : $category" else "Choisir une catégorie")
+                }
             }
         }
     }

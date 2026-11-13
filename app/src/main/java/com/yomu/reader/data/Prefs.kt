@@ -60,6 +60,29 @@ object Prefs {
         get() = sp.getString("local_tree", null)
         set(value) { sp.edit().putString("local_tree", value).apply() }
 
+    var autoDownload: Boolean
+        get() = sp.getBoolean("auto_download", false)
+        set(value) { sp.edit().putBoolean("auto_download", value).apply() }
+
+    var deleteAfterRead: Boolean
+        get() = sp.getBoolean("delete_after_read", false)
+        set(value) { sp.edit().putBoolean("delete_after_read", value).apply() }
+
+    /** Assombrissement du lecteur, de 0 (aucun) à 0.8. */
+    var readerDim: Float
+        get() = sp.getFloat("reader_dim", 0f)
+        set(value) { sp.edit().putFloat("reader_dim", value).apply() }
+
+    /** Marges latérales en mode webtoon, en % de la largeur (0 à 25). */
+    var webtoonMargin: Int
+        get() = sp.getInt("webtoon_margin", 0)
+        set(value) { sp.edit().putInt("webtoon_margin", value).apply() }
+
+    /** Vitesse du défilement automatique en mode webtoon (1 à 10). */
+    var autoScrollSpeed: Int
+        get() = sp.getInt("auto_scroll_speed", 4)
+        set(value) { sp.edit().putInt("auto_scroll_speed", value).apply() }
+
     var lastAppUpdateCheck: Long
         get() = sp.getLong("last_app_check", 0L)
         set(value) { sp.edit().putLong("last_app_check", value).apply() }

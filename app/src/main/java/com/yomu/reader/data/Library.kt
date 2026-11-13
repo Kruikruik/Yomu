@@ -26,7 +26,7 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
-data class LibraryEntry(val manga: Manga, val addedAt: Long, val unread: Int = 0)
+data class LibraryEntry(val manga: Manga, val addedAt: Long, val unread: Int = 0, val category: String? = null)
 
 data class Progress(
     val read: Set<String> = emptySet(),
@@ -152,6 +152,8 @@ object Library {
                 val now = System.currentTimeMillis()
                 val items = fresh.map { UpdateItem(key, it.id, it.title, now) }
                 _updates.update { list -> (items + list).distinctBy { it.key + "|" + it.chapterId }.take(MAX_UPDATES) }
+                // Téléchargement automatique des nouveaux chapitres (réglage dans Plus).
+                if (Prefs.autoDownload) get(key)?.manga?.let { Downloads.enqueue(it, fresh.take(10).reversed()) }
             }
         }
         recomputeUnread(key)
@@ -230,7 +232,19 @@ object Library {
             ))
         }
         mangaFor(key)?.let { rememberManga(it) }
-        if (finished) recomputeUnread(key)
+        if (finished) {
+            recomputeUnread(key)
+            // Supprime le téléchargement une fois le chapitre terminé (réglage dans Plus).
+            if (Prefs.deleteAfterRead && Downloads.isDownloaded(key, chapterId)) {
+                Downloads.delete(key, listOf(chapterId))
+            }
+        }
+        save()
+    }
+
+    fun setCategory(key: String, category: String?) {
+        val c = category?.trim()?.ifEmpty { null }
+        _entries.update { list -> list.map { if (it.manga.key == key) it.copy(category = c) else it } }
         save()
     }
 
@@ -348,6 +362,7 @@ object Library {
                 put("manga", mangaToJson(e.manga))
                 put("addedAt", e.addedAt)
                 put("unread", e.unread)
+                put("category", e.category)
             })
         }
         val progressObj = JSONObject()
@@ -398,7 +413,7 @@ object Library {
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
             val manga = mangaFromJson(o.optJSONObject("manga") ?: continue) ?: continue
-            out += LibraryEntry(manga, o.optLong("addedAt"), o.optInt("unread"))
+            out += LibraryEntry(manga, o.optLong("addedAt"), o.optInt("unread"), o.str("category"))
         }
         return out.distinctBy { it.manga.key }
     }

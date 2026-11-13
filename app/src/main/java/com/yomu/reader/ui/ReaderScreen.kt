@@ -9,6 +9,8 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -35,6 +38,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -57,6 +61,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -68,7 +73,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
@@ -114,6 +121,10 @@ fun ReaderScreen(sourceId: String, mangaId: String, initialChapterId: String, on
     var attempt by remember { mutableIntStateOf(0) }
     var mode by remember { mutableStateOf(Prefs.modeFor(key)) }
     var showUi by remember { mutableStateOf(false) }
+    var dim by remember { mutableFloatStateOf(Prefs.readerDim) }
+    var margin by remember { mutableIntStateOf(Prefs.webtoonMargin) }
+    var autoScroll by remember { mutableStateOf(false) }
+    var speed by remember { mutableIntStateOf(Prefs.autoScrollSpeed) }
     var jumpTo by remember { mutableStateOf<Int?>(null) }
     // Pages du chapitre suivant chargées à l'avance (passage instantané).
     val prefetched = remember { mutableMapOf<String, List<String>>() }
@@ -232,6 +243,9 @@ fun ReaderScreen(sourceId: String, mangaId: String, initialChapterId: String, on
                             onPageChanged = onPageChanged,
                             nextChapter = nextChapter,
                             onNext = goTo,
+                            marginPercent = margin,
+                            autoScroll = autoScroll && !showUi,
+                            speed = speed,
                         )
                     } else {
                         PagedReader(
@@ -249,6 +263,15 @@ fun ReaderScreen(sourceId: String, mangaId: String, initialChapterId: String, on
                 }
             }
 
+            // Filtre sombre pour lire dans le noir (ne bloque pas les gestes).
+            if (dim > 0f) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = dim.coerceIn(0f, 0.8f)))
+                )
+            }
+
             AnimatedVisibility(
                 visible = showUi,
                 enter = fadeIn(),
@@ -263,6 +286,26 @@ fun ReaderScreen(sourceId: String, mangaId: String, initialChapterId: String, on
                     onMode = { m ->
                         mode = m
                         Prefs.setModeFor(key, m)
+                    },
+                    dim = dim,
+                    onDim = {
+                        dim = it
+                        Prefs.readerDim = it
+                    },
+                    margin = margin,
+                    onMargin = {
+                        margin = it
+                        Prefs.webtoonMargin = it
+                    },
+                    autoScroll = autoScroll,
+                    onAutoScroll = {
+                        autoScroll = it
+                        if (it) showUi = false
+                    },
+                    speed = speed,
+                    onSpeed = {
+                        speed = it
+                        Prefs.autoScrollSpeed = it
                     },
                 )
             }
@@ -312,6 +355,14 @@ private fun TopOverlay(
     mode: ReaderMode,
     onBack: () -> Unit,
     onMode: (ReaderMode) -> Unit,
+    dim: Float,
+    onDim: (Float) -> Unit,
+    margin: Int,
+    onMargin: (Int) -> Unit,
+    autoScroll: Boolean,
+    onAutoScroll: (Boolean) -> Unit,
+    speed: Int,
+    onSpeed: (Int) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     Surface(color = Color.Black.copy(alpha = 0.85f), contentColor = Color.White) {
@@ -349,6 +400,38 @@ private fun TopOverlay(
                             },
                             trailingIcon = {
                                 if (m == mode) Icon(Icons.Default.Check, contentDescription = null)
+                            },
+                        )
+                    }
+                    HorizontalDivider()
+                    Column(Modifier.width(280.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text("Assombrir l'écran : ${(dim * 100).roundToInt()} %", style = MaterialTheme.typography.labelMedium)
+                        Slider(value = dim, onValueChange = onDim, valueRange = 0f..0.8f)
+                        if (mode == ReaderMode.WEBTOON) {
+                            Text("Marges sur les côtés : $margin %", style = MaterialTheme.typography.labelMedium)
+                            Slider(
+                                value = margin.toFloat(),
+                                onValueChange = { onMargin(it.roundToInt()) },
+                                valueRange = 0f..25f,
+                            )
+                            Text("Vitesse du défilement auto : $speed", style = MaterialTheme.typography.labelMedium)
+                            Slider(
+                                value = speed.toFloat(),
+                                onValueChange = { onSpeed(it.roundToInt()) },
+                                valueRange = 1f..10f,
+                                steps = 8,
+                            )
+                        }
+                    }
+                    if (mode == ReaderMode.WEBTOON) {
+                        DropdownMenuItem(
+                            text = { Text(if (autoScroll) "Arrêter le défilement auto" else "Lancer le défilement auto") },
+                            onClick = {
+                                onAutoScroll(!autoScroll)
+                                menu = false
+                            },
+                            trailingIcon = {
+                                if (autoScroll) Icon(Icons.Default.Check, contentDescription = null)
                             },
                         )
                     }
@@ -417,8 +500,26 @@ private fun WebtoonReader(
     onPageChanged: (Int) -> Unit,
     nextChapter: Chapter?,
     onNext: (Chapter) -> Unit,
+    marginPercent: Int,
+    autoScroll: Boolean,
+    speed: Int,
 ) {
     val state = rememberLazyListState(initialFirstVisibleItemIndex = initialPage.coerceIn(0, pages.lastIndex))
+    val sidePadding = (LocalConfiguration.current.screenWidthDp * marginPercent / 100f).dp
+    val density = LocalDensity.current
+
+    // Défilement automatique : avance tout seul, en pause quand le menu est affiché.
+    LaunchedEffect(autoScroll, speed) {
+        if (!autoScroll) return@LaunchedEffect
+        val pxPerSecond = with(density) { (40 + speed * 35).dp.toPx() }
+        var last = withFrameNanos { it }
+        while (true) {
+            val now = withFrameNanos { it }
+            val dt = (now - last) / 1_000_000_000f
+            last = now
+            if (!state.isScrollInProgress || dt < 0.1f) state.scrollBy(pxPerSecond * dt.coerceAtMost(0.1f))
+        }
+    }
     val pageCallback by rememberUpdatedState(onPageChanged)
     val tapCallback by rememberUpdatedState(onTap)
     var scale by remember { mutableFloatStateOf(1f) }
@@ -491,7 +592,13 @@ private fun WebtoonReader(
                 },
         ) {
             itemsIndexed(pages, key = { i, _ -> i }, contentType = { _, _ -> "page" }) { _, url ->
-                PageImage(url = url, headers = headers, modifier = Modifier.fillMaxWidth())
+                PageImage(
+                    url = url,
+                    headers = headers,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = sidePadding),
+                )
             }
             item(key = "end", contentType = "end") {
                 ChapterEnd(nextChapter, onNext)

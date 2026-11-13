@@ -1,10 +1,14 @@
 package com.yomu.reader.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items as rowItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -18,6 +22,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -69,9 +74,15 @@ fun LibraryScreen(onOpen: (Manga) -> Unit, onRead: (key: String, chapterId: Stri
         downloaded.groupingBy { it.substringBeforeLast('|') }.eachCount()
     }
 
-    val shown = remember(entries, progress, downloadCounts, sort, onlyUnread, onlyDownloaded, query) {
+    // Catégories : null = toutes, "" = sans catégorie.
+    var category by rememberSaveable { mutableStateOf<String?>(null) }
+    val categories = remember(entries) { entries.mapNotNull { it.category }.distinct().sortedBy { it.lowercase() } }
+    if (category != null && category != "" && category !in categories) category = null
+
+    val shown = remember(entries, progress, downloadCounts, sort, onlyUnread, onlyDownloaded, query, category) {
         entries
             .asSequence()
+            .filter { category == null || (it.category ?: "") == category }
             .filter { query.isBlank() || it.manga.title.contains(query.trim(), ignoreCase = true) }
             .filter { !onlyUnread || it.unread > 0 }
             .filter { !onlyDownloaded || (downloadCounts[it.manga.key] ?: 0) > 0 }
@@ -183,11 +194,30 @@ fun LibraryScreen(onOpen: (Manga) -> Unit, onRead: (key: String, chapterId: Stri
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        Box(
+        Column(
             Modifier
                 .padding(padding)
                 .fillMaxSize()
         ) {
+            if (categories.isNotEmpty()) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item(key = "all") {
+                        FilterChip(selected = category == null, onClick = { category = null }, label = { Text("Toutes") })
+                    }
+                    rowItems(categories, key = { "c_$it" }) { c ->
+                        FilterChip(selected = category == c, onClick = { category = c }, label = { Text(c) })
+                    }
+                    if (entries.any { it.category == null }) {
+                        item(key = "none") {
+                            FilterChip(selected = category == "", onClick = { category = "" }, label = { Text("Sans catégorie") })
+                        }
+                    }
+                }
+            }
+            Box(Modifier.fillMaxSize()) {
             when {
                 entries.isEmpty() ->
                     CenterMessage("Ta bibliothèque est vide.\nVa dans Explorer et ajoute des séries avec ♥.")
@@ -211,6 +241,7 @@ fun LibraryScreen(onOpen: (Manga) -> Unit, onRead: (key: String, chapterId: Stri
                         )
                     }
                 }
+            }
             }
         }
     }

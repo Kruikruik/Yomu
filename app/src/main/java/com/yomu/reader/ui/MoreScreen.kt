@@ -77,6 +77,8 @@ fun MoreScreen() {
 
     var mode by remember { mutableStateOf(Prefs.defaultMode) }
     var saver by remember { mutableStateOf(Prefs.dataSaver) }
+    var autoDownload by remember { mutableStateOf(Prefs.autoDownload) }
+    var deleteAfterRead by remember { mutableStateOf(Prefs.deleteAfterRead) }
     var interval by remember { mutableStateOf(Prefs.updateInterval) }
     var intervalMenu by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -274,6 +276,24 @@ fun MoreScreen() {
                     if (downloaded.isNotEmpty()) {
                         TextButton(onClick = { confirmDeleteAll = true }) { Text("Tout supprimer") }
                     }
+                },
+            )
+            ListItem(
+                headlineContent = { Text("Télécharger les nouveaux chapitres") },
+                supportingContent = { Text("Automatiquement, pour les séries de ta bibliothèque") },
+                trailingContent = { Switch(checked = autoDownload, onCheckedChange = null) },
+                modifier = Modifier.clickable {
+                    autoDownload = !autoDownload
+                    Prefs.autoDownload = autoDownload
+                },
+            )
+            ListItem(
+                headlineContent = { Text("Supprimer après lecture") },
+                supportingContent = { Text("Efface le téléchargement d'un chapitre une fois terminé") },
+                trailingContent = { Switch(checked = deleteAfterRead, onCheckedChange = null) },
+                modifier = Modifier.clickable {
+                    deleteAfterRead = !deleteAfterRead
+                    Prefs.deleteAfterRead = deleteAfterRead
                 },
             )
             if (queue.isNotEmpty()) {
