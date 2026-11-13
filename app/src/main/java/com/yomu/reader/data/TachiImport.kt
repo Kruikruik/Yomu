@@ -171,7 +171,7 @@ object TachiImport {
     private val MAL_ITEM = Regex("<manga>(.*?)</manga>", RegexOption.DOT_MATCHES_ALL)
 
     private fun malField(block: String, name: String): String? =
-        Regex("<$name>\s*(?:<!\[CDATA\[)?(.*?)(?:]]>)?\s*</$name>", RegexOption.DOT_MATCHES_ALL)
+        Regex("<$name>\\s*(?:<!\\[CDATA\\[)?(.*?)(?:]]>)?\\s*</$name>", RegexOption.DOT_MATCHES_ALL)
             .find(block)?.groupValues?.get(1)?.trim()?.ifEmpty { null }
 
     private fun parseMal(xml: String): List<BackupEntry> = MAL_ITEM.findAll(xml).mapNotNull { m ->
@@ -230,7 +230,7 @@ object TachiImport {
         return lines.drop(1).mapNotNull { line ->
             val cells = splitCsvLine(line, sep)
             val title = cells.getOrNull(titleCol)?.ifEmpty { null } ?: return@mapNotNull null
-            val chapter = cells.getOrNull(chapterCol)?.let { Regex("(\d+(?:\.\d+)?)").find(it)?.value?.toFloatOrNull() }
+            val chapter = cells.getOrNull(chapterCol)?.let { Regex("(\\d+(?:\\.\\d+)?)").find(it)?.value?.toFloatOrNull() }
             BackupEntry(
                 title = title,
                 url = "",
