@@ -86,7 +86,13 @@ private val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DetailsScreen(sourceId: String, mangaId: String, onBack: () -> Unit, onRead: (String) -> Unit) {
+fun DetailsScreen(
+    sourceId: String,
+    mangaId: String,
+    onBack: () -> Unit,
+    onRead: (String) -> Unit,
+    onOpenManga: (String) -> Unit = {},
+) {
     val key = keyOf(sourceId, mangaId)
     val source = remember(sourceId) { SourceManager.get(sourceId) }
     var manga by remember { mutableStateOf(MangaCache.get(key) ?: Library.mangaFor(key)) }
@@ -107,6 +113,19 @@ fun DetailsScreen(sourceId: String, mangaId: String, onBack: () -> Unit, onRead:
     val entry = entries.firstOrNull { it.manga.key == key }
     val inLibrary = entry != null
     var categoryDialog by remember { mutableStateOf(false) }
+    var migrateDialog by remember { mutableStateOf(false) }
+    if (migrateDialog) {
+        manga?.let { m ->
+            MigrateDialog(
+                manga = m,
+                onDismiss = { migrateDialog = false },
+                onMigrated = { newKey ->
+                    migrateDialog = false
+                    onOpenManga(newKey)
+                },
+            )
+        }
+    }
     if (categoryDialog) {
         val existing = remember(entries) { entries.mapNotNull { it.category }.distinct().sortedBy { it.lowercase() } }
         var text by remember { mutableStateOf(entry?.category.orEmpty()) }
@@ -279,6 +298,12 @@ fun DetailsScreen(sourceId: String, mangaId: String, onBack: () -> Unit, onRead:
                                     reload++
                                     menu = false
                                 })
+                                if (inLibrary) {
+                                    DropdownMenuItem(text = { Text("Changer de source") }, onClick = {
+                                        migrateDialog = true
+                                        menu = false
+                                    })
+                                }
                                 DropdownMenuItem(text = { Text("Tout marquer comme lu") }, onClick = {
                                     Library.setRead(key, list.map { it.id }, true)
                                     menu = false
@@ -328,6 +353,9 @@ fun DetailsScreen(sourceId: String, mangaId: String, onBack: () -> Unit, onRead:
                             category = entry?.category,
                             onCategory = { categoryDialog = true },
                         )
+                    }
+                    if (entry != null) {
+                        item(key = "tracking") { TrackingRow(entry) }
                     }
                     m.description?.let { desc ->
                         item(key = "desc") {

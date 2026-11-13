@@ -69,7 +69,7 @@ private fun formatSize(bytes: Long): String = when {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalCoilApi::class)
 @Composable
-fun MoreScreen() {
+fun MoreScreen(onStats: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val queue by Downloads.queue.collectAsState()
@@ -144,6 +144,36 @@ fun MoreScreen() {
             localFolder = uri.toString()
             message = "Dossier des fichiers locaux enregistré"
         }
+    }
+    var aniListDialog by remember { mutableStateOf(false) }
+    if (aniListDialog) {
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { aniListDialog = false },
+            title = { Text("Importer depuis AniList") },
+            text = {
+                Column {
+                    Text(
+                        "Ton pseudo AniList (ta liste doit être publique).",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        singleLine = true,
+                        placeholder = { Text("Pseudo") },
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = name.isNotBlank(), onClick = {
+                    TachiImport.startAniList(name)
+                    aniListDialog = false
+                }) { Text("Importer") }
+            },
+            dismissButton = { TextButton(onClick = { aniListDialog = false }) { Text("Annuler") } },
+        )
     }
     var listDialog by remember { mutableStateOf(false) }
     var listText by remember { mutableStateOf("") }
@@ -243,6 +273,13 @@ fun MoreScreen() {
             }
 
             // ------------------------------------------------ Application
+            SectionTitle("Mon suivi")
+            ListItem(
+                headlineContent = { Text("Statistiques") },
+                supportingContent = { Text("Séries par statut, chapitres lus, genres préférés…") },
+                modifier = Modifier.clickable { onStats() },
+            )
+
             SectionTitle("Application")
             ListItem(
                 leadingContent = { Icon(YomuIcons.SystemUpdate, contentDescription = null) },
@@ -426,9 +463,16 @@ fun MoreScreen() {
                 )
             } else {
                 ListItem(
-                    headlineContent = { Text("Importer une sauvegarde Tachiyomi / Mihon") },
-                    supportingContent = { Text("Fichier .tachibk ou .proto.gz : séries et chapitres lus, retrouvés sur MangaDex ou Webtoon") },
+                    headlineContent = { Text("Importer un fichier") },
+                    supportingContent = {
+                        Text("Sauvegarde Tachiyomi/Mihon/Komikku (.tachibk), export MyAnimeList (.xml) ou liste Kenmei/CSV")
+                    },
                     modifier = Modifier.clickable { tachiLauncher.launch(arrayOf("*/*")) },
+                )
+                ListItem(
+                    headlineContent = { Text("Importer depuis AniList") },
+                    supportingContent = { Text("Ta liste manga publique : statuts, notes et progression") },
+                    modifier = Modifier.clickable { aniListDialog = true },
                 )
                 ListItem(
                     headlineContent = { Text("Importer une liste de titres") },

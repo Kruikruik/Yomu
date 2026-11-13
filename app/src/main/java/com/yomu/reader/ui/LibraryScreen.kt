@@ -50,6 +50,7 @@ import com.yomu.reader.data.Library
 import com.yomu.reader.data.LibraryEntry
 import com.yomu.reader.data.LibrarySort
 import com.yomu.reader.data.Prefs
+import com.yomu.reader.data.ReadingStatus
 import com.yomu.reader.model.Manga
 import kotlinx.coroutines.launch
 
@@ -74,14 +75,17 @@ fun LibraryScreen(onOpen: (Manga) -> Unit, onRead: (key: String, chapterId: Stri
         downloaded.groupingBy { it.substringBeforeLast('|') }.eachCount()
     }
 
+    var statusFilter by rememberSaveable { mutableStateOf<String?>(null) }
+
     // Catégories : null = toutes, "" = sans catégorie.
     var category by rememberSaveable { mutableStateOf<String?>(null) }
     val categories = remember(entries) { entries.mapNotNull { it.category }.distinct().sortedBy { it.lowercase() } }
     if (category != null && category != "" && category !in categories) category = null
 
-    val shown = remember(entries, progress, downloadCounts, sort, onlyUnread, onlyDownloaded, query, category) {
+    val shown = remember(entries, progress, downloadCounts, sort, onlyUnread, onlyDownloaded, query, category, statusFilter) {
         entries
             .asSequence()
+            .filter { statusFilter == null || it.status.name == statusFilter }
             .filter { category == null || (it.category ?: "") == category }
             .filter { query.isBlank() || it.manga.title.contains(query.trim(), ignoreCase = true) }
             .filter { !onlyUnread || it.unread > 0 }
@@ -92,6 +96,7 @@ fun LibraryScreen(onOpen: (Manga) -> Unit, onRead: (key: String, chapterId: Stri
                     LibrarySort.UNREAD -> compareByDescending<LibraryEntry> { it.unread }.thenBy { it.manga.title.lowercase() }
                     LibrarySort.LAST_READ -> compareByDescending<LibraryEntry> { progress[it.manga.key]?.lastReadAt ?: 0L }
                     LibrarySort.ADDED -> compareByDescending<LibraryEntry> { it.addedAt }
+                    LibrarySort.RATING -> compareByDescending<LibraryEntry> { it.rating }.thenBy { it.manga.title.lowercase() }
                 }
             )
             .toList()
@@ -199,6 +204,28 @@ fun LibraryScreen(onOpen: (Manga) -> Unit, onRead: (key: String, chapterId: Stri
                 .padding(padding)
                 .fillMaxSize()
         ) {
+            if (entries.isNotEmpty()) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item(key = "s_all") {
+                        FilterChip(selected = statusFilter == null, onClick = { statusFilter = null }, label = { Text("Tout") })
+                    }
+                    ReadingStatus.entries.forEach { st ->
+                        val count = entries.count { it.status == st }
+                        if (count > 0) {
+                            item(key = "s_${st.name}") {
+                                FilterChip(
+                                    selected = statusFilter == st.name,
+                                    onClick = { statusFilter = if (statusFilter == st.name) null else st.name },
+                                    label = { Text("${st.label} ($count)") },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             if (categories.isNotEmpty()) {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 12.dp),

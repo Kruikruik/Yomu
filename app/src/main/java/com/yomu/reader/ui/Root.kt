@@ -189,6 +189,7 @@ fun YomuRoot(startTab: String? = null) {
                 SourcesScreen(
                     onOpen = { s -> nav.navigate("browse/${Uri.encode(s.id)}") },
                     onGlobalSearch = { q -> nav.navigate("search/${Uri.encode(q)}") },
+                    onOpenManga = { m -> nav.navigate(mangaRoute(m.sourceId, m.id)) },
                 )
             }
             composable("search/{query}") { entry ->
@@ -199,7 +200,10 @@ fun YomuRoot(startTab: String? = null) {
                 )
             }
             composable("more") {
-                MoreScreen()
+                MoreScreen(onStats = { nav.navigate("stats") })
+            }
+            composable("stats") {
+                StatsScreen(onBack = { nav.popBackStack() })
             }
             composable("browse/{sourceId}") { entry ->
                 BrowseScreen(
@@ -216,6 +220,10 @@ fun YomuRoot(startTab: String? = null) {
                     mangaId = mangaId,
                     onBack = { nav.popBackStack() },
                     onRead = { chapterId -> nav.navigate(readerRoute(sourceId, mangaId, chapterId)) },
+                    onOpenManga = { key ->
+                        nav.popBackStack()
+                        nav.openManga(key)
+                    },
                 )
             }
             composable("reader/{sourceId}/{mangaId}/{chapterId}") { entry ->

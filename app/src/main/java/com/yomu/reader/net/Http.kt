@@ -5,6 +5,8 @@ import kotlinx.coroutines.withContext
 import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
 import okhttp3.HttpUrl
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -48,6 +50,22 @@ object Http {
                 body
             }
         }
+
+    suspend fun postJson(url: HttpUrl, body: JSONObject): JSONObject {
+        val text = withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url(url)
+                .header("Accept", "application/json")
+                .post(body.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            client.newCall(request).execute().use { resp ->
+                val t = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful && !t.trimStart().startsWith("{")) throw IOException("Erreur HTTP ${resp.code}")
+                t
+            }
+        }
+        return withContext(Dispatchers.Default) { JSONObject(text) }
+    }
 
     suspend fun getJson(url: HttpUrl): JSONObject {
         val text = getString(url)

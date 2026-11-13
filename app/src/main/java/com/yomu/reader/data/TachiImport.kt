@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.yomu.reader.net.Http
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import org.json.JSONObject
 import java.io.IOException
 import java.util.zip.GZIPInputStream
 
@@ -44,6 +47,9 @@ object TachiImport {
         val dateAdded: Long,
         val maxRead: Float?,
         val lastRead: Long,
+        val altTitles: List<String> = emptyList(),
+        val status: ReadingStatus? = null,
+        val rating: Int = 0,
     ) {
         val mangaDexId: String?
             get() = if (sourceName.contains("mangadex", ignoreCase = true)) {
@@ -56,9 +62,199 @@ object TachiImport {
     private val UUID = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
     private val CHAPTER_NUM = Regex("(?i)(?:chapter|chapitre|ch\\.?|episode|ep\\.?)\\s*(\\d+(?:\\.\\d+)?)")
 
+    /** Fichier d'import : sauvegarde Tachiyomi/Mihon, export MyAnimeList (.xml) ou liste CSV (Kenmei…). */
     fun start(bytes: ByteArray) {
         if (_state.value.running) return
-        scope.launch { run(bytes) }
+        scope.launch {
+            val raw = if (bytes.size > 2 && bytes[0] == 0x1f.toByte() && bytes[1] == 0x8b.toByte()) {
+                runCatching { GZIPInputStream(bytes.inputStream()).use { it.readBytes() } }.getOrDefault(bytes)
+            } else {
+                bytes
+            }
+            val head = String(raw, 0, minOf(raw.size, 2000), Charsets.UTF_8)
+            when {
+                head.contains("<myanimelist", ignoreCase = true) || head.trimStart().startsWith("<?xml") -> {
+                    _state.value = ImportState(running = true, current = "Lecture de l'export MyAnimeList…")
+                    process(parseMal(String(raw, Charsets.UTF_8)))
+                }
+                looksLikeCsv(head) -> {
+                    _state.value = ImportState(running = true, current = "Lecture de la liste…")
+                    val entries = parseCsv(String(raw, Charsets.UTF_8))
+                    if (entries.isEmpty()) {
+                        _state.value = ImportState(finished = true, error = "Aucune série trouvée dans ce fichier.")
+                    } else {
+                        process(entries)
+                    }
+                }
+                else -> run(bytes)
+            }
+        }
+    }
+
+    /** Import de la liste manga publique d'un compte AniList. */
+    fun startAniList(userName: String) {
+        if (_state.value.running) return
+        scope.launch {
+            _state.value = ImportState(running = true, current = "Connexion à AniList…")
+            val entries = try {
+                fetchAniList(userName.trim())
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: Exception) {
+                _state.value = ImportState(finished = true, error = "AniList : ${e.message}")
+                return@launch
+            }
+            process(entries)
+        }
+    }
+
+    // ------------------------------------------------------------- AniList
+
+    private suspend fun fetchAniList(userName: String): List<BackupEntry> {
+        val query = """
+            query (${'$'}name: String) {
+              MediaListCollection(userName: ${'$'}name, type: MANGA) {
+                lists { entries {
+                  status progress score(format: POINT_10)
+                  media { title { romaji english native } synonyms }
+                } }
+              }
+            }
+        """.trimIndent()
+        val body = JSONObject()
+            .put("query", query)
+            .put("variables", JSONObject().put("name", userName))
+        val json = Http.postJson("https://graphql.anilist.co".toHttpUrl(), body)
+        json.optJSONArray("errors")?.let { errs ->
+            throw IOException(errs.optJSONObject(0)?.optString("message") ?: "compte introuvable")
+        }
+        val lists = json.getJSONObject("data").getJSONObject("MediaListCollection").getJSONArray("lists")
+        val out = mutableListOf<BackupEntry>()
+        for (i in 0 until lists.length()) {
+            val entries = lists.getJSONObject(i).optJSONArray("entries") ?: continue
+            for (j in 0 until entries.length()) {
+                val e = entries.getJSONObject(j)
+                val media = e.getJSONObject("media")
+                val t = media.getJSONObject("title")
+                val names = listOf("english", "romaji", "native").mapNotNull { k ->
+                    if (t.isNull(k)) null else t.optString(k).ifEmpty { null }
+                }
+                val synonyms = media.optJSONArray("synonyms")?.let { arr -> (0 until arr.length()).map { arr.getString(it) } }.orEmpty()
+                if (names.isEmpty()) continue
+                val progress = e.optInt("progress", 0)
+                out += BackupEntry(
+                    title = names.first(),
+                    url = "",
+                    sourceName = "",
+                    favorite = true,
+                    dateAdded = 0L,
+                    maxRead = progress.takeIf { it > 0 }?.toFloat(),
+                    lastRead = 0L,
+                    altTitles = (names.drop(1) + synonyms).distinct(),
+                    status = when (e.optString("status")) {
+                        "CURRENT", "REPEATING" -> ReadingStatus.READING
+                        "PLANNING" -> ReadingStatus.PLANNED
+                        "COMPLETED" -> ReadingStatus.COMPLETED
+                        "PAUSED" -> ReadingStatus.ON_HOLD
+                        "DROPPED" -> ReadingStatus.DROPPED
+                        else -> null
+                    },
+                    rating = e.optDouble("score", 0.0).toInt(),
+                )
+            }
+        }
+        return out
+    }
+
+    // ------------------------------------------------------- MyAnimeList
+
+    private val MAL_ITEM = Regex("<manga>(.*?)</manga>", RegexOption.DOT_MATCHES_ALL)
+
+    private fun malField(block: String, name: String): String? =
+        Regex("<$name>\s*(?:<!\[CDATA\[)?(.*?)(?:]]>)?\s*</$name>", RegexOption.DOT_MATCHES_ALL)
+            .find(block)?.groupValues?.get(1)?.trim()?.ifEmpty { null }
+
+    private fun parseMal(xml: String): List<BackupEntry> = MAL_ITEM.findAll(xml).mapNotNull { m ->
+        val b = m.groupValues[1]
+        val title = malField(b, "manga_title") ?: return@mapNotNull null
+        BackupEntry(
+            title = android.text.Html.fromHtml(title, android.text.Html.FROM_HTML_MODE_LEGACY).toString(),
+            url = "",
+            sourceName = "",
+            favorite = true,
+            dateAdded = 0L,
+            maxRead = malField(b, "my_read_chapters")?.toFloatOrNull()?.takeIf { it > 0f },
+            lastRead = 0L,
+            status = statusFromText(malField(b, "my_status")),
+            rating = malField(b, "my_score")?.toIntOrNull() ?: 0,
+        )
+    }.toList()
+
+    // ---------------------------------------------------------- CSV (Kenmei…)
+
+    private fun looksLikeCsv(head: String): Boolean {
+        val first = head.lineSequence().firstOrNull().orEmpty().lowercase()
+        return (first.contains(',') || first.contains(';') || first.contains('\t')) &&
+            (first.contains("title") || first.contains("titre") || first.contains("name"))
+    }
+
+    private fun splitCsvLine(line: String, sep: Char): List<String> {
+        val out = mutableListOf<String>()
+        val cur = StringBuilder()
+        var quoted = false
+        var i = 0
+        while (i < line.length) {
+            val c = line[i]
+            when {
+                c == '"' && quoted && i + 1 < line.length && line[i + 1] == '"' -> { cur.append('"'); i++ }
+                c == '"' -> quoted = !quoted
+                c == sep && !quoted -> { out += cur.toString(); cur.clear() }
+                else -> cur.append(c)
+            }
+            i++
+        }
+        out += cur.toString()
+        return out.map { it.trim() }
+    }
+
+    private fun parseCsv(text: String): List<BackupEntry> {
+        val lines = text.lines().filter { it.isNotBlank() }
+        if (lines.size < 2) return emptyList()
+        val sep = listOf(',', ';', '\t').maxBy { c -> lines[0].count { it == c } }
+        val header = splitCsvLine(lines[0], sep).map { it.lowercase() }
+        fun col(vararg names: String) = header.indexOfFirst { h -> names.any { h.contains(it) } }
+        val titleCol = col("title", "titre", "name").takeIf { it >= 0 } ?: return emptyList()
+        val chapterCol = col("last read", "last_read", "lastread", "progress", "read chapter", "chapter", "chapitre")
+        val statusCol = col("status", "statut")
+        val ratingCol = col("rating", "score", "note")
+        return lines.drop(1).mapNotNull { line ->
+            val cells = splitCsvLine(line, sep)
+            val title = cells.getOrNull(titleCol)?.ifEmpty { null } ?: return@mapNotNull null
+            val chapter = cells.getOrNull(chapterCol)?.let { Regex("(\d+(?:\.\d+)?)").find(it)?.value?.toFloatOrNull() }
+            BackupEntry(
+                title = title,
+                url = "",
+                sourceName = "",
+                favorite = true,
+                dateAdded = 0L,
+                maxRead = chapter?.takeIf { it > 0f },
+                lastRead = 0L,
+                status = statusFromText(cells.getOrNull(statusCol)),
+                rating = cells.getOrNull(ratingCol)?.toFloatOrNull()?.toInt()?.coerceIn(0, 10) ?: 0,
+            )
+        }.distinctBy { it.title.lowercase() }
+    }
+
+    private fun statusFromText(s: String?): ReadingStatus? {
+        val t = s?.lowercase()?.replace('_', ' ')?.replace('-', ' ') ?: return null
+        return when {
+            t.contains("plan") || t.contains("à lire") -> ReadingStatus.PLANNED
+            t.contains("complet") || t.contains("termin") || t.contains("finished") -> ReadingStatus.COMPLETED
+            t.contains("hold") || t.contains("pause") -> ReadingStatus.ON_HOLD
+            t.contains("drop") || t.contains("abandon") -> ReadingStatus.DROPPED
+            t.contains("read") || t.contains("current") || t.contains("lecture") -> ReadingStatus.READING
+            else -> null
+        }
     }
 
     /**
@@ -131,7 +327,7 @@ object TachiImport {
                     } catch (_: Exception) {
                         null
                     }
-                } ?: findAnywhere(entry.title)
+                } ?: findAnywhere(listOf(entry.title) + entry.altTitles)
                 val mangaSource = manga?.let { SourceManager.get(it.sourceId) }
                 if (manga == null || mangaSource == null) {
                     notFound += entry.title
@@ -143,7 +339,11 @@ object TachiImport {
                     } else {
                         chapters.filter { c -> val n = c.number; n != null && n <= max }.map { it.id }
                     }
-                    Library.importEntry(manga, chapters, readIds, entry.lastRead, entry.dateAdded)
+                    Library.importEntry(
+                        manga, chapters, readIds, entry.lastRead, entry.dateAdded,
+                        status = entry.status,
+                        rating = entry.rating,
+                    )
                     imported++
                 }
             } catch (ce: CancellationException) {
@@ -163,14 +363,16 @@ object TachiImport {
     }
 
     /** Cherche la série sur toutes les sources en ligne, dans l'ordre (MangaDex d'abord). */
-    private suspend fun findAnywhere(title: String): com.yomu.reader.model.Manga? {
+    private suspend fun findAnywhere(titles: List<String>): com.yomu.reader.model.Manga? {
         for (src in SourceManager.all) {
             if (src.id == "local") continue
-            try {
-                src.findByTitle(title)?.let { return it }
-            } catch (ce: CancellationException) {
-                throw ce
-            } catch (_: Exception) {
+            for (title in titles.take(4)) {
+                try {
+                    src.findByTitle(title)?.let { return it }
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (_: Exception) {
+                }
             }
         }
         return null

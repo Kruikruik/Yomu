@@ -14,6 +14,7 @@ enum class LibrarySort(val label: String) {
     UNREAD("Non lus"),
     LAST_READ("Dernière lecture"),
     ADDED("Date d'ajout"),
+    RATING("Ma note"),
 }
 
 object Prefs {

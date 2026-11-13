@@ -26,7 +26,24 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
-data class LibraryEntry(val manga: Manga, val addedAt: Long, val unread: Int = 0, val category: String? = null)
+enum class ReadingStatus(val label: String) {
+    READING("En cours de lecture"),
+    PLANNED("À lire"),
+    COMPLETED("Terminé"),
+    ON_HOLD("En pause"),
+    DROPPED("Abandonné"),
+}
+
+data class LibraryEntry(
+    val manga: Manga,
+    val addedAt: Long,
+    val unread: Int = 0,
+    val category: String? = null,
+    val status: ReadingStatus = ReadingStatus.PLANNED,
+    /** Note de 0 (aucune) à 10. */
+    val rating: Int = 0,
+    val notes: String? = null,
+)
 
 data class Progress(
     val read: Set<String> = emptySet(),
@@ -114,7 +131,9 @@ object Library {
             _entries.update { list -> list.filterNot { it.manga.key == manga.key } }
             storedChapters.remove(manga.key)
         } else {
-            _entries.update { list -> list + LibraryEntry(manga, System.currentTimeMillis()) }
+            val started = _progress.value[manga.key]?.let { it.read.isNotEmpty() || it.lastChapterId != null } == true
+            val status = if (started) ReadingStatus.READING else ReadingStatus.PLANNED
+            _entries.update { list -> list + LibraryEntry(manga, System.currentTimeMillis(), status = status) }
             rememberManga(manga)
             if (chapters != null) {
                 storedChapters[manga.key] = chapters
@@ -232,6 +251,8 @@ object Library {
             ))
         }
         mangaFor(key)?.let { rememberManga(it) }
+        // Commencer une série « À lire » la passe en « En cours ».
+        if (get(key)?.status == ReadingStatus.PLANNED) setStatus(key, ReadingStatus.READING)
         if (finished) {
             recomputeUnread(key)
             // Supprime le téléchargement une fois le chapitre terminé (réglage dans Plus).
@@ -239,6 +260,55 @@ object Library {
                 Downloads.delete(key, listOf(chapterId))
             }
         }
+        save()
+    }
+
+    private fun updateEntry(key: String, change: (LibraryEntry) -> LibraryEntry) {
+        _entries.update { list -> list.map { if (it.manga.key == key) change(it) else it } }
+        save()
+    }
+
+    fun setStatus(key: String, status: ReadingStatus) = updateEntry(key) { it.copy(status = status) }
+
+    fun setRating(key: String, rating: Int) = updateEntry(key) { it.copy(rating = rating.coerceIn(0, 10)) }
+
+    fun setNotes(key: String, notes: String?) = updateEntry(key) { it.copy(notes = notes?.trim()?.ifEmpty { null }) }
+
+    /** Numéro du dernier chapitre lu (sert aux imports et aux changements de source). */
+    fun maxReadNumber(key: String): Float? {
+        val read = _progress.value[key]?.read ?: return null
+        return chaptersFor(key).orEmpty().filter { it.id in read }.mapNotNull { it.number }.maxOrNull()
+    }
+
+    /**
+     * Change la source d'une série (ex. MangaDex → Webtoon) en gardant statut, note, notes,
+     * catégorie et chapitres lus (d'après leur numéro).
+     */
+    fun migrate(oldKey: String, manga: Manga, chapters: List<Chapter>) {
+        val old = get(oldKey) ?: return
+        val maxRead = maxReadNumber(oldKey)
+        val oldProgress = _progress.value[oldKey]
+        val readIds = if (maxRead == null) emptySet() else chapters.filter { c -> val n = c.number; n != null && n <= maxRead }.map { it.id }.toSet()
+        MangaCache.put(manga)
+        ChapterCache.put(manga.key, chapters)
+        storedChapters[manga.key] = chapters
+        storedChapters.remove(oldKey)
+        rememberManga(manga)
+        _entries.update { list ->
+            list.filterNot { it.manga.key == oldKey || it.manga.key == manga.key } +
+                old.copy(manga = manga)
+        }
+        val newest = chapters.firstOrNull { it.id in readIds }
+        _progress.update { map ->
+            val p = map[manga.key] ?: Progress()
+            map + (manga.key to p.copy(
+                read = p.read + readIds,
+                lastChapterId = newest?.id ?: p.lastChapterId,
+                lastReadAt = maxOf(p.lastReadAt, oldProgress?.lastReadAt ?: 0L),
+            ))
+        }
+        recomputeUnread(manga.key)
+        saveChapters()
         save()
     }
 
@@ -262,12 +332,21 @@ object Library {
     }
 
     /** Ajoute une série importée (sauvegarde Tachiyomi) avec ses chapitres lus. */
-    fun importEntry(manga: Manga, chapters: List<Chapter>, readIds: Collection<String>, lastReadAt: Long, addedAt: Long) {
+    fun importEntry(
+        manga: Manga,
+        chapters: List<Chapter>,
+        readIds: Collection<String>,
+        lastReadAt: Long,
+        addedAt: Long,
+        status: ReadingStatus? = null,
+        rating: Int = 0,
+    ) {
         MangaCache.put(manga)
         ChapterCache.put(manga.key, chapters)
         if (!contains(manga.key)) {
             val added = if (addedAt > 0) addedAt else System.currentTimeMillis()
-            _entries.update { it + LibraryEntry(manga, added) }
+            val st = status ?: if (readIds.isEmpty()) ReadingStatus.PLANNED else ReadingStatus.READING
+            _entries.update { it + LibraryEntry(manga, added, status = st, rating = rating.coerceIn(0, 10)) }
         }
         rememberManga(manga)
         storedChapters[manga.key] = chapters
@@ -363,6 +442,9 @@ object Library {
                 put("addedAt", e.addedAt)
                 put("unread", e.unread)
                 put("category", e.category)
+                put("status", e.status.name)
+                put("rating", e.rating)
+                put("notes", e.notes)
             })
         }
         val progressObj = JSONObject()
@@ -413,7 +495,15 @@ object Library {
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
             val manga = mangaFromJson(o.optJSONObject("manga") ?: continue) ?: continue
-            out += LibraryEntry(manga, o.optLong("addedAt"), o.optInt("unread"), o.str("category"))
+            out += LibraryEntry(
+                manga = manga,
+                addedAt = o.optLong("addedAt"),
+                unread = o.optInt("unread"),
+                category = o.str("category"),
+                status = ReadingStatus.entries.firstOrNull { it.name == o.str("status") } ?: ReadingStatus.PLANNED,
+                rating = o.optInt("rating").coerceIn(0, 10),
+                notes = o.str("notes"),
+            )
         }
         return out.distinctBy { it.manga.key }
     }

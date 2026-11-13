@@ -45,7 +45,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.collectAsState
+import com.yomu.reader.data.Library
 import com.yomu.reader.data.MangaCache
+import com.yomu.reader.data.ReadingStatus
+import com.yomu.reader.source.FilterState
 import com.yomu.reader.model.Manga
 import com.yomu.reader.source.Source
 import com.yomu.reader.source.SourceManager
@@ -54,7 +58,7 @@ import kotlinx.coroutines.CancellationException
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SourcesScreen(onOpen: (Source) -> Unit, onGlobalSearch: (String) -> Unit) {
+fun SourcesScreen(onOpen: (Source) -> Unit, onGlobalSearch: (String) -> Unit, onOpenManga: (Manga) -> Unit = {}) {
     var query by rememberSaveable { mutableStateOf("") }
     val focus = LocalFocusManager.current
     Scaffold(topBar = { TopAppBar(title = { Text("Explorer") }) }) { padding ->
@@ -78,6 +82,7 @@ fun SourcesScreen(onOpen: (Source) -> Unit, onGlobalSearch: (String) -> Unit) {
                     }),
                 )
             }
+            item(key = "reco") { Recommendations(onOpenManga) }
             items(SourceManager.all, key = { it.id }) { source ->
                 ListItem(
                     headlineContent = { Text(source.name) },
@@ -105,6 +110,70 @@ private fun SourceBadge(source: Source) {
             color = MaterialTheme.colorScheme.onPrimaryContainer,
             style = MaterialTheme.typography.labelLarge,
         )
+    }
+}
+
+/**
+ * « Pour toi » : séries MangaDex bien notées dans tes genres préférés,
+ * hors de ce que tu suis déjà (comme les suggestions de Kenmei).
+ */
+@Composable
+private fun Recommendations(onOpen: (Manga) -> Unit) {
+    val entries by Library.entries.collectAsState()
+    val topGenres = remember(entries) {
+        entries.filter { it.status != ReadingStatus.DROPPED }
+            .flatMap { e -> e.manga.genres.map { it to (if (e.rating > 0) e.rating else 5) } }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { it.value.sum() }
+            .entries.sortedByDescending { it.value }
+            .map { it.key }
+            .take(2)
+    }
+    var result by remember(topGenres) { mutableStateOf<List<Manga>?>(null) }
+    LaunchedEffect(topGenres) {
+        if (topGenres.isEmpty()) {
+            result = emptyList()
+            return@LaunchedEffect
+        }
+        val source = SourceManager.get("mangadex-en") ?: return@LaunchedEffect
+        result = try {
+            val groups = source.filters()
+            val ids = groups.filter { it.key.startsWith("tags_") }.flatMap { it.options }
+                .filter { o -> topGenres.any { it.equals(o.label, ignoreCase = true) } }
+            val state: FilterState = if (ids.isEmpty()) emptyMap() else mapOf("tags_genre" to ids.associate { it.value to 1 })
+            val sorted = state + ("sort" to mapOf("rating" to 1))
+            val known = Library.entries.value.map { it.manga.key }.toSet()
+            source.browse(1, "", sorted).mangas.filter { it.key !in known }.onEach { MangaCache.put(it) }
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+    val list = result
+    if (topGenres.isEmpty() || (list != null && list.isEmpty())) return
+    Column(Modifier.padding(vertical = 8.dp)) {
+        Text(
+            "Pour toi • ${topGenres.joinToString(", ")}",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        if (list == null) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(60.dp),
+                contentAlignment = Alignment.Center,
+            ) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
+        } else {
+            LazyRow(contentPadding = PaddingValues(horizontal = 8.dp)) {
+                items(list, key = { it.key }) { m ->
+                    Box(Modifier.width(110.dp)) { MangaCard(manga = m, onClick = { onOpen(m) }) }
+                }
+            }
+        }
+        HorizontalDivider(Modifier.padding(top = 8.dp))
     }
 }
 
