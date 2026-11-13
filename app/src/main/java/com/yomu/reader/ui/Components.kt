@@ -231,7 +231,7 @@ fun DownloadIndicator(
             }
             task != null && task.state == com.yomu.reader.data.DownloadState.ERROR ->
                 androidx.compose.material3.IconButton(onClick = onRetry) {
-                    Icon(androidx.compose.material.icons.Icons.Default.Warning, contentDescription = "Réessayer", tint = MaterialTheme.colorScheme.error)
+                    Icon(YomuIcons.Warning, contentDescription = "Réessayer", tint = MaterialTheme.colorScheme.error)
                 }
             task != null -> androidx.compose.material3.IconButton(onClick = onCancel) {
                 if (task.state == com.yomu.reader.data.DownloadState.RUNNING && task.total > 0) {

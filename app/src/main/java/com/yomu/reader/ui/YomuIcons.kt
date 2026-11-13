@@ -27,6 +27,8 @@ object YomuIcons {
         icon("SystemUpdate", "M17,1.01L7,1c-1.1,0 -2,0.9 -2,2v18c0,1.1 0.9,2 2,2h10c1.1,0 2,-0.9 2,-2V3c0,-1.1 -0.9,-1.99 -2,-1.99zM17,19H7V5h10v14zM16,13h-3V8h-2v5H8l4,4 4,-4z")
     }
 
+    val Warning: ImageVector by lazy { icon("Warning", "M1,21h22L12,2 1,21zM13,18h-2v-2h2v2zM13,14h-2v-4h2v4z") }
+
     private fun icon(name: String, path: String): ImageVector =
         ImageVector.Builder(
             name = name,
