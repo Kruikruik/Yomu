@@ -49,6 +49,13 @@ class WebtoonSource : Source {
 
     override suspend fun filters(): List<FilterGroup> = listOf(
         FilterGroup(
+            "kind", "Catalogue",
+            listOf(
+                FilterOption("", "Originals (officiels)"),
+                FilterOption("canvas", "Canvas (créateurs indépendants)"),
+            ),
+        ),
+        FilterGroup(
             "genre", "Genre",
             listOf(FilterOption("", "Tous")) + listOf(
                 "action" to "Action", "comedy" to "Comédie", "drama" to "Drame", "fantasy" to "Fantasy",
@@ -81,9 +88,20 @@ class WebtoonSource : Source {
 
     override suspend fun browse(page: Int, query: String, filters: FilterState): MangasPage {
         if (query.isNotBlank()) return search(query, page)
-        if (page > 1) return MangasPage(emptyList(), false)
         val sort = filters.single("sort") ?: "MANA"
         val genre = filters.single("genre").orEmpty()
+        if (filters.single("kind") == "canvas") {
+            // Canvas : liste paginée, genres en majuscules.
+            val tab = if (genre.isEmpty()) "ALL" else genre.uppercase()
+            val order = when (sort) {
+                "UPDATE" -> "UPDATE"
+                "LIKEIT" -> "LIKEIT"
+                else -> "READ_COUNT"
+            }
+            val list = parseList(html("$base/en/canvas/list?genreTab=$tab&sortOrder=$order&page=$page"))
+            return MangasPage(list, list.isNotEmpty() && page < 50)
+        }
+        if (page > 1) return MangasPage(emptyList(), false)
         val day = filters.single("day").orEmpty()
         val url = when {
             day.isNotEmpty() -> "$base/en/originals/$day?sortOrder=$sort"

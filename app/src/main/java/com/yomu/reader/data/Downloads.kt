@@ -175,7 +175,7 @@ object Downloads {
             setTask(task.id) { it.copy(total = urls.size) }
             urls.forEachIndexed { i, url ->
                 if (!stillQueued(task.id)) throw Removed()
-                val ext = url.substringAfterLast('.', "").substringBefore('?').lowercase()
+                val ext = url.substringBefore('#').substringBefore('?').substringAfterLast('.', "").lowercase()
                     .takeIf { it in setOf("jpg", "jpeg", "png", "webp", "gif") } ?: "img"
                 val dest = File(dir, "%04d.%s".format(i, ext))
                 if (!dest.exists() || dest.length() == 0L) downloadFile(url, source.imageHeaders, dest)

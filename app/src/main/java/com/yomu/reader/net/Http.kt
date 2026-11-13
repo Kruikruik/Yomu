@@ -9,6 +9,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -33,8 +35,28 @@ object Http {
                 if (req.url.host.endsWith("pstatic.net") && req.header("Referer") == null) {
                     builder.header("Referer", "https://www.webtoons.com/")
                 }
-                chain.proceed(builder.build())
+                // MANGA Plus : en-têtes du site officiel.
+                if (req.url.host.endsWith("tokyo-cdn.com") && req.header("Referer") == null) {
+                    builder.header("Referer", "https://mangaplus.shueisha.co.jp/")
+                    builder.header("Origin", "https://mangaplus.shueisha.co.jp")
+                }
+                val response = chain.proceed(builder.build())
+                // Images MANGA Plus chiffrées : la clé est dans l'adresse (#yomukey=…), jamais envoyée au serveur.
+                val key = req.url.fragment?.takeIf { it.startsWith("yomukey=") }?.removePrefix("yomukey=")
+                if (key != null && response.isSuccessful) decrypt(response, key) else response
             }
+            .build()
+    }
+
+    private fun decrypt(response: Response, hexKey: String): Response {
+        val body = response.body ?: return response
+        val key = hexKey.chunked(2).mapNotNull { it.toIntOrNull(16)?.toByte() }.toByteArray()
+        if (key.isEmpty()) return response
+        val bytes = body.bytes()
+        for (i in bytes.indices) bytes[i] = (bytes[i].toInt() xor key[i % key.size].toInt()).toByte()
+        return response.newBuilder()
+            .body(bytes.toResponseBody(body.contentType()))
+            .header("Content-Length", bytes.size.toString())
             .build()
     }
 
