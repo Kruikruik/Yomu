@@ -47,6 +47,58 @@ class WebtoonSource : Source {
         return MangasPage(parseList(Http.getString(url, headers)), false)
     }
 
+    override suspend fun filters(): List<FilterGroup> = listOf(
+        FilterGroup(
+            "genre", "Genre",
+            listOf(FilterOption("", "Tous")) + listOf(
+                "action" to "Action", "comedy" to "Comédie", "drama" to "Drame", "fantasy" to "Fantasy",
+                "heartwarming" to "Feel-good", "historical" to "Historique", "horror" to "Horreur",
+                "mystery" to "Mystère", "romance" to "Romance", "sf" to "Science-fiction",
+                "slice_of_life" to "Tranche de vie", "sports" to "Sport", "super_hero" to "Super-héros",
+                "supernatural" to "Surnaturel", "thriller" to "Thriller", "graphic_novel" to "Roman graphique",
+                "tiptoon" to "Informatif",
+            ).map { FilterOption(it.first, it.second) },
+        ),
+        FilterGroup(
+            "day", "Jour de sortie",
+            listOf(
+                FilterOption("", "Tous"),
+                FilterOption("monday", "Lundi"), FilterOption("tuesday", "Mardi"),
+                FilterOption("wednesday", "Mercredi"), FilterOption("thursday", "Jeudi"),
+                FilterOption("friday", "Vendredi"), FilterOption("saturday", "Samedi"),
+                FilterOption("sunday", "Dimanche"), FilterOption("complete", "Terminées"),
+            ),
+        ),
+        FilterGroup(
+            "sort", "Trier par",
+            listOf(
+                FilterOption("MANA", "Popularité"),
+                FilterOption("UPDATE", "Mises à jour récentes"),
+                FilterOption("LIKEIT", "Les plus aimées"),
+            ),
+        ),
+    )
+
+    override suspend fun browse(page: Int, query: String, filters: FilterState): MangasPage {
+        if (query.isNotBlank()) return search(query, page)
+        if (page > 1) return MangasPage(emptyList(), false)
+        val sort = filters.single("sort") ?: "MANA"
+        val genre = filters.single("genre").orEmpty()
+        val day = filters.single("day").orEmpty()
+        val url = when {
+            day.isNotEmpty() -> "$base/en/originals/$day?sortOrder=$sort"
+            genre.isNotEmpty() -> "$base/en/genres/$genre?sortOrder=$sort"
+            else -> "$base/en/genre"
+        }
+        var list = parseList(html(url))
+        if (day.isNotEmpty() && genre.isNotEmpty()) {
+            // Jour + genre : on garde les séries de ce genre (le genre est dans l'adresse de la série).
+            val wanted = genre.replace('_', '-')
+            list = list.filter { it.id.split('/').getOrNull(2) == wanted }
+        }
+        return MangasPage(list, false)
+    }
+
     override suspend fun findByTitle(title: String): Manga? {
         val target = normalizeTitle(title)
         if (target.isEmpty()) return null

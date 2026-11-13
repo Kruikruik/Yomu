@@ -13,12 +13,16 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -48,12 +52,16 @@ import androidx.compose.ui.unit.dp
 import com.yomu.reader.data.Library
 import com.yomu.reader.data.MangaCache
 import com.yomu.reader.model.Manga
+import com.yomu.reader.source.FilterGroup
+import com.yomu.reader.source.FilterState
 import com.yomu.reader.source.SourceManager
+import com.yomu.reader.source.activeCount
 import kotlinx.coroutines.CancellationException
 
 private const val POPULAR = 0
 private const val LATEST = 1
 private const val SEARCH = 2
+private const val FILTERED = 3
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,6 +81,39 @@ fun BrowseScreen(sourceId: String, onBack: () -> Unit, onOpen: (Manga) -> Unit) 
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var reloadKey by remember { mutableIntStateOf(0) }
+    var applied by remember { mutableStateOf<FilterState>(emptyMap()) }
+    var groups by remember { mutableStateOf<List<FilterGroup>?>(null) }
+    var showFilters by remember { mutableStateOf(false) }
+    val activeFilters = applied.activeCount()
+
+    LaunchedEffect(sourceId) {
+        groups = try {
+            source.filters()
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    if (showFilters) {
+        val g = groups
+        if (g.isNullOrEmpty()) {
+            showFilters = false
+        } else {
+            FilterSheet(
+                groups = g,
+                initial = applied,
+                onApply = { f ->
+                    applied = f
+                    showFilters = false
+                    if (listing != SEARCH) listing = FILTERED
+                    reloadKey++
+                },
+                onDismiss = { showFilters = false },
+            )
+        }
+    }
     val gridState = rememberLazyGridState()
     val focus = LocalFocusManager.current
     val library by Library.entries.collectAsState()
@@ -84,7 +125,8 @@ fun BrowseScreen(sourceId: String, onBack: () -> Unit, onOpen: (Manga) -> Unit) 
         try {
             val res = when (listing) {
                 LATEST -> source.latest(p)
-                SEARCH -> source.search(submitted, p)
+                SEARCH -> if (applied.isEmpty()) source.search(submitted, p) else source.browse(p, submitted, applied)
+                FILTERED -> source.browse(p, "", applied)
                 else -> source.popular(p)
             }
             res.mangas.forEach { MangaCache.put(it) }
@@ -127,6 +169,15 @@ fun BrowseScreen(sourceId: String, onBack: () -> Unit, onOpen: (Manga) -> Unit) 
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
                     }
                 },
+                actions = {
+                    if (!groups.isNullOrEmpty()) {
+                        IconButton(onClick = { showFilters = true }) {
+                            BadgedBox(badge = { if (activeFilters > 0) Badge { Text("$activeFilters") } }) {
+                                Icon(YomuIcons.FilterList, contentDescription = "Filtres")
+                            }
+                        }
+                    }
+                },
             )
         },
     ) { padding ->
@@ -162,11 +213,21 @@ fun BrowseScreen(sourceId: String, onBack: () -> Unit, onOpen: (Manga) -> Unit) 
                 }),
             )
             Row(
-                Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 FilterChip(selected = listing == POPULAR, onClick = { listing = POPULAR }, label = { Text("Populaires") })
                 FilterChip(selected = listing == LATEST, onClick = { listing = LATEST }, label = { Text("Récents") })
+                if (!groups.isNullOrEmpty()) {
+                    FilterChip(
+                        selected = listing == FILTERED,
+                        onClick = { if (activeFilters > 0 && listing != FILTERED) listing = FILTERED else showFilters = true },
+                        label = { Text(if (activeFilters > 0) "Catalogue filtré ($activeFilters)" else "Catalogue + filtres") },
+                        leadingIcon = { Icon(YomuIcons.FilterList, contentDescription = null) },
+                    )
+                }
                 if (submitted.isNotEmpty()) {
                     FilterChip(selected = listing == SEARCH, onClick = { listing = SEARCH }, label = { Text("« $submitted »") })
                 }

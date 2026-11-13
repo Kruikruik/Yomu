@@ -73,6 +73,26 @@ class LocalSource : Source {
         MangasPage(list.sortedWith(naturalOrder { it.name.orEmpty() }).map { toManga(it) }, false)
     }
 
+    override suspend fun filters(): List<FilterGroup> = listOf(
+        FilterGroup(
+            "sort", "Trier par",
+            listOf(FilterOption("name", "Nom"), FilterOption("recent", "Modifiés récemment")),
+        ),
+    )
+
+    override suspend fun browse(page: Int, query: String, filters: FilterState): MangasPage =
+        withContext(Dispatchers.IO) {
+            if (page > 1) return@withContext MangasPage(emptyList(), false)
+            var list = series()
+            if (query.isNotBlank()) list = list.filter { it.name.orEmpty().contains(query.trim(), ignoreCase = true) }
+            list = if (filters.single("sort") == "recent") {
+                list.sortedByDescending { it.lastModified() }
+            } else {
+                list.sortedWith(naturalOrder { it.name.orEmpty() })
+            }
+            MangasPage(list.map { toManga(it) }, false)
+        }
+
     override suspend fun details(mangaId: String): Manga = withContext(Dispatchers.IO) {
         val dir = doc(mangaId)
         val info = dir.listFiles().firstOrNull { it.name.equals("details.txt", ignoreCase = true) }

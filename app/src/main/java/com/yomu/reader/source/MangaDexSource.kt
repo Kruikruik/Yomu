@@ -33,14 +33,18 @@ class MangaDexSource(override val lang: String) : Source {
             addQueryParameter("order[relevance]", "desc")
         }
 
-    private suspend fun list(page: Int, extra: HttpUrl.Builder.() -> Unit): MangasPage {
+    private suspend fun list(
+        page: Int,
+        ratings: Collection<String> = listRatings,
+        extra: HttpUrl.Builder.() -> Unit,
+    ): MangasPage {
         val url = api.newBuilder()
             .addPathSegment("manga")
             .addQueryParameter("limit", LIMIT.toString())
             .addQueryParameter("offset", ((page - 1) * LIMIT).toString())
             .addQueryParameter("includes[]", "cover_art")
             .addQueryParameter("availableTranslatedLanguage[]", lang)
-            .apply { listRatings.forEach { addQueryParameter("contentRating[]", it) } }
+            .apply { ratings.forEach { addQueryParameter("contentRating[]", it) } }
             .apply(extra)
             .build()
         val json = Http.getJson(url)
@@ -49,6 +53,120 @@ class MangaDexSource(override val lang: String) : Source {
         val total = json.optInt("total", 0)
         val loaded = page * LIMIT
         return MangasPage(mangas, loaded < total && loaded + LIMIT <= 10_000)
+    }
+
+    // ------------------------------------------------------------ catalogue
+
+    private class Tag(val id: String, val name: String, val group: String)
+
+    @Volatile
+    private var tagCache: List<Tag>? = null
+
+    private suspend fun tags(): List<Tag> {
+        tagCache?.let { return it }
+        val json = Http.getJson(api.newBuilder().addPathSegment("manga").addPathSegment("tag").build())
+        val data = json.getJSONArray("data")
+        val out = (0 until data.length()).mapNotNull { i ->
+            val o = data.getJSONObject(i)
+            val a = o.optJSONObject("attributes") ?: return@mapNotNull null
+            val name = localized(a.optJSONObject("name")) ?: return@mapNotNull null
+            Tag(o.getString("id"), name, a.optString("group"))
+        }.sortedBy { it.name.lowercase() }
+        tagCache = out
+        return out
+    }
+
+    override suspend fun filters(): List<FilterGroup> {
+        val tags = try {
+            tags()
+        } catch (ce: kotlinx.coroutines.CancellationException) {
+            throw ce
+        } catch (_: Exception) {
+            emptyList()
+        }
+        fun tagGroup(group: String, label: String) = FilterGroup(
+            key = "tags_$group",
+            label = label,
+            options = tags.filter { it.group == group }.map { FilterOption(it.id, it.name) },
+            multi = true,
+            triState = true,
+        )
+        return listOf(
+            FilterGroup(
+                "sort", "Trier par",
+                listOf(
+                    FilterOption("followedCount", "Popularité"),
+                    FilterOption("latestUploadedChapter", "Derniers chapitres"),
+                    FilterOption("rating", "Mieux notés"),
+                    FilterOption("createdAt", "Ajouts récents"),
+                    FilterOption("year", "Année de sortie"),
+                    FilterOption("title", "Titre (A → Z)"),
+                ),
+            ),
+            FilterGroup(
+                "lang", "Type",
+                listOf(
+                    FilterOption("ja", "Manga (Japon)"),
+                    FilterOption("ko", "Manhwa (Corée)"),
+                    FilterOption("zh", "Manhua (Chine)"),
+                ),
+                multi = true,
+            ),
+            FilterGroup(
+                "status", "Statut",
+                listOf(
+                    FilterOption("ongoing", "En cours"),
+                    FilterOption("completed", "Terminé"),
+                    FilterOption("hiatus", "En pause"),
+                    FilterOption("cancelled", "Annulé"),
+                ),
+                multi = true,
+            ),
+            FilterGroup(
+                "demo", "Public",
+                listOf(
+                    FilterOption("shounen", "Shōnen"),
+                    FilterOption("shoujo", "Shōjo"),
+                    FilterOption("seinen", "Seinen"),
+                    FilterOption("josei", "Josei"),
+                ),
+                multi = true,
+            ),
+            tagGroup("genre", "Genres (appui = inclure, 2e appui = exclure)"),
+            tagGroup("theme", "Thèmes"),
+            tagGroup("format", "Format"),
+            tagGroup("content", "Contenu"),
+            FilterGroup(
+                "rating", "Classification",
+                listOf(
+                    FilterOption("safe", "Tout public"),
+                    FilterOption("suggestive", "Suggestif"),
+                    FilterOption("erotica", "Érotique"),
+                ),
+                multi = true,
+            ),
+        ).filter { it.options.isNotEmpty() }
+    }
+
+    override suspend fun browse(page: Int, query: String, filters: FilterState): MangasPage {
+        val ratings = filters.included("rating").ifEmpty { listRatings }
+        return list(page, ratings) {
+            if (query.isNotBlank()) addQueryParameter("title", query.trim())
+            val order = filters.single("sort") ?: if (query.isNotBlank()) "relevance" else "followedCount"
+            addQueryParameter("order[$order]", if (order == "title") "asc" else "desc")
+            filters.included("lang").forEach {
+                addQueryParameter("originalLanguage[]", it)
+                if (it == "zh") addQueryParameter("originalLanguage[]", "zh-hk")
+            }
+            filters.included("status").forEach { addQueryParameter("status[]", it) }
+            filters.included("demo").forEach { addQueryParameter("publicationDemographic[]", it) }
+            filters.keys.filter { it.startsWith("tags_") }.forEach { g ->
+                filters.included(g).forEach { addQueryParameter("includedTags[]", it) }
+                filters.excluded(g).forEach { addQueryParameter("excludedTags[]", it) }
+            }
+            addQueryParameter("includedTagsMode", "AND")
+            addQueryParameter("excludedTagsMode", "OR")
+        }
     }
 
     override suspend fun details(mangaId: String): Manga {
