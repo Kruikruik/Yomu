@@ -50,6 +50,15 @@ fun TrackingRow(entry: LibraryEntry) {
     val key = entry.manga.key
     var statusMenu by remember { mutableStateOf(false) }
     var notesDialog by remember { mutableStateOf(false) }
+    var linkDialog by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    if (linkDialog) {
+        LinkDialog(
+            initial = entry.link,
+            onSave = { Library.setLink(key, it) },
+            onDismiss = { linkDialog = false },
+        )
+    }
 
     Column(Modifier.padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -72,6 +81,16 @@ fun TrackingRow(entry: LibraryEntry) {
                 onClick = { notesDialog = true },
                 label = { Text(if (entry.notes.isNullOrBlank()) "Ajouter une note perso" else "Mes notes") },
             )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AssistChip(
+                onClick = { linkDialog = true },
+                label = { Text(if (entry.link == null) "Ajouter mon lien de lecture" else "Modifier le lien") },
+            )
+            entry.link?.let { link ->
+                Spacer(Modifier.width(8.dp))
+                AssistChip(onClick = { openLink(context, link) }, label = { Text("Ouvrir le lien ↗") })
+            }
         }
         // Note sur 10 : 5 étoiles, chaque étoile vaut 2 points ; retoucher la même étoile l'enlève.
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -207,5 +226,67 @@ fun MigrateDialog(manga: Manga, onDismiss: () -> Unit, onMigrated: (String) -> U
         },
         confirmButton = {},
         dismissButton = { TextButton(enabled = !working, onClick = onDismiss) { Text("Fermer") } },
+    )
+}
+
+/** Ouvre un lien dans le navigateur du téléphone (Yomu ne lit pas son contenu). */
+fun openLink(context: android.content.Context, link: String) {
+    try {
+        context.startActivity(
+            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "Aucune appli pour ouvrir ce lien", android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
+/** Saisie libre d'un lien, enregistré seulement sur le téléphone. */
+@Composable
+fun LinkDialog(initial: String?, onSave: (String?) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf(initial.orEmpty()) }
+    val valid = text.isBlank() || Library.cleanLink(text) != null
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Mon lien de lecture") },
+        text = {
+            Column {
+                Text(
+                    "Colle l'adresse de la page où tu lis cette série. Elle reste sur ton téléphone et s'ouvre dans ton navigateur.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    singleLine = true,
+                    isError = !valid,
+                    placeholder = { Text("https://…") },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+                    ),
+                    supportingText = { if (!valid) Text("Adresse web invalide") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = valid, onClick = {
+                onSave(text)
+                onDismiss()
+            }) { Text("Enregistrer") }
+        },
+        dismissButton = {
+            Row {
+                if (!initial.isNullOrEmpty()) {
+                    TextButton(onClick = {
+                        onSave(null)
+                        onDismiss()
+                    }) { Text("Supprimer") }
+                }
+                TextButton(onClick = onDismiss) { Text("Annuler") }
+            }
+        },
     )
 }

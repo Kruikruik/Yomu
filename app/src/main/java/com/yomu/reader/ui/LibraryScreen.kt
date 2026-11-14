@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -302,6 +303,15 @@ private fun PendingDialog(
     val scope = rememberCoroutineScope()
     var working by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<String?>(null) }
+    var editLink by remember { mutableStateOf<com.yomu.reader.data.PendingEntry?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    editLink?.let { p ->
+        LinkDialog(
+            initial = p.link,
+            onSave = { Library.setPendingLink(p.title, it) },
+            onDismiss = { editLink = null },
+        )
+    }
     androidx.compose.material3.AlertDialog(
         onDismissRequest = { if (!working) onDismiss() },
         title = { Text("À retrouver (${pending.size})") },
@@ -318,7 +328,17 @@ private fun PendingDialog(
                         androidx.compose.material3.ListItem(
                             headlineContent = { Text(p.title, maxLines = 2) },
                             supportingContent = {
-                                p.maxRead?.let { Text("Lu jusqu'au ch. ${if (it % 1f == 0f) it.toInt().toString() else it.toString()}") }
+                                Column {
+                                    p.maxRead?.let { Text("Lu jusqu'au ch. ${if (it % 1f == 0f) it.toInt().toString() else it.toString()}") }
+                                    Row {
+                                        androidx.compose.material3.TextButton(onClick = { editLink = p }) {
+                                            Text(if (p.link == null) "+ Mon lien" else "Modifier le lien")
+                                        }
+                                        p.link?.let { l ->
+                                            androidx.compose.material3.TextButton(onClick = { openLink(context, l) }) { Text("Ouvrir ↗") }
+                                        }
+                                    }
+                                }
                             },
                             trailingContent = {
                                 IconButton(onClick = { Library.removePending(p.title) }) {

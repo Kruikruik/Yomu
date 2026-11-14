@@ -44,6 +44,8 @@ data class LibraryEntry(
     /** Note de 0 (aucune) à 10. */
     val rating: Int = 0,
     val notes: String? = null,
+    /** Lien libre choisi par l'utilisateur, ouvert dans le navigateur (jamais lu par l'appli). */
+    val link: String? = null,
 )
 
 data class Progress(
@@ -62,6 +64,7 @@ data class PendingEntry(
     val status: ReadingStatus? = null,
     val rating: Int = 0,
     val addedAt: Long = System.currentTimeMillis(),
+    val link: String? = null,
 )
 
 data class RefreshResult(val newChapters: Int, val mangas: List<String>)
@@ -331,6 +334,22 @@ object Library {
 
     fun setNotes(key: String, notes: String?) = updateEntry(key) { it.copy(notes = notes?.trim()?.ifEmpty { null }) }
 
+    fun setLink(key: String, link: String?) = updateEntry(key) { it.copy(link = cleanLink(link)) }
+
+    fun setPendingLink(title: String, link: String?) {
+        val k = normalizeTitle(title)
+        _pending.update { list -> list.map { if (normalizeTitle(it.title) == k) it.copy(link = cleanLink(link)) else it } }
+        save()
+    }
+
+    /** Garde seulement les adresses web (http/https). */
+    fun cleanLink(link: String?): String? {
+        val t = link?.trim().orEmpty()
+        if (t.isEmpty()) return null
+        val withScheme = if (t.startsWith("http://") || t.startsWith("https://")) t else "https://$t"
+        return withScheme.takeIf { android.util.Patterns.WEB_URL.matcher(it).matches() }
+    }
+
     /** Numéro du dernier chapitre lu (sert aux imports et aux changements de source). */
     fun maxReadNumber(key: String): Float? {
         val read = _progress.value[key]?.read ?: return null
@@ -502,6 +521,7 @@ object Library {
                 put("status", e.status.name)
                 put("rating", e.rating)
                 put("notes", e.notes)
+                put("link", e.link)
             })
         }
         val progressObj = JSONObject()
@@ -538,6 +558,7 @@ object Library {
                         put("status", p.status?.name)
                         put("rating", p.rating)
                         put("addedAt", p.addedAt)
+                        put("link", p.link)
                     })
                 }
             })
@@ -560,6 +581,7 @@ object Library {
                 status = ReadingStatus.entries.firstOrNull { it.name == o.str("status") },
                 rating = o.optInt("rating"),
                 addedAt = o.optLong("addedAt"),
+                link = o.str("link"),
             )
         }
         _updates.value = (0 until arr.length()).mapNotNull { i ->
@@ -584,6 +606,7 @@ object Library {
                 status = ReadingStatus.entries.firstOrNull { it.name == o.str("status") } ?: ReadingStatus.PLANNED,
                 rating = o.optInt("rating").coerceIn(0, 10),
                 notes = o.str("notes"),
+                link = o.str("link"),
             )
         }
         return out.distinctBy { it.manga.key }
