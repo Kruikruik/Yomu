@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import com.yomu.reader.data.Library
 import com.yomu.reader.extension.Extensions
+import com.yomu.reader.tachi.TachiExtensions
 import com.yomu.reader.data.MangaCache
 import com.yomu.reader.data.ReadingStatus
 import com.yomu.reader.source.FilterState
@@ -66,10 +67,12 @@ fun SourcesScreen(
     onOpenManga: (Manga) -> Unit = {},
     onOpenBrowser: () -> Unit = {},
     onOpenExtensions: () -> Unit = {},
+    onOpenTachi: () -> Unit = {},
 ) {
     // Recompose quand l'utilisateur ajoute / active / désactive une extension.
     val extensions by Extensions.installed.collectAsState()
-    val sources = remember(extensions) { SourceManager.all }
+    val tachiExtensions by TachiExtensions.installed.collectAsState()
+    val sources = remember(extensions, tachiExtensions) { SourceManager.all }
     var query by rememberSaveable { mutableStateOf("") }
     val focus = LocalFocusManager.current
     Scaffold(topBar = { TopAppBar(title = { Text("Explorer") }) }) { padding ->
@@ -99,6 +102,17 @@ fun SourcesScreen(
                     supportingContent = { Text("Ouvrir n'importe quelle adresse, tes favoris") },
                     leadingContent = { Icon(YomuIcons.Public, contentDescription = null) },
                     modifier = Modifier.clickable { onOpenBrowser() },
+                )
+                HorizontalDivider()
+            }
+            item(key = "tachi") {
+                ListItem(
+                    headlineContent = { Text("Dépôts & Extensions") },
+                    supportingContent = {
+                        Text(if (tachiExtensions.isEmpty()) "Extensions Tachiyomi / Mihon" else "${tachiExtensions.size} extension(s) installée(s)")
+                    },
+                    leadingContent = { Icon(YomuIcons.Public, contentDescription = null) },
+                    modifier = Modifier.clickable { onOpenTachi() },
                 )
                 HorizontalDivider()
             }

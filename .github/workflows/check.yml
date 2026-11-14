@@ -1,0 +1,22 @@
+name: Vérifier la compilation
+
+# Compile les branches de travail sans rien publier (seul « main » publie l'APK).
+on:
+  push:
+    branches-ignore: [ main ]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compiler
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --stacktrace
