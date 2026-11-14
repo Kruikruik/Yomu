@@ -43,6 +43,8 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.yomu.reader.data.AppRelease
@@ -112,6 +114,9 @@ private fun mangaRoute(sourceId: String, mangaId: String) =
 
 private fun readerRoute(sourceId: String, mangaId: String, chapterId: String) =
     "reader/${Uri.encode(sourceId)}/${Uri.encode(mangaId)}/${Uri.encode(chapterId)}"
+
+/** Navigateur intégré ; sans URL, il reprend la dernière page visitée. */
+private fun webRoute(url: String?) = if (url == null) "web" else "web?url=${Uri.encode(url)}"
 
 private fun NavHostController.openManga(key: String) {
     val (s, m) = splitKey(key)
@@ -232,6 +237,26 @@ fun YomuRoot(startTab: String? = null) {
                     onOpen = { s -> nav.navigate("browse/${Uri.encode(s.id)}") },
                     onGlobalSearch = { q -> nav.navigate("search/${Uri.encode(q)}") },
                     onOpenManga = { m -> nav.navigate(mangaRoute(m.sourceId, m.id)) },
+                    onOpenBrowser = { nav.navigate("bookmarks") },
+                )
+            }
+            composable("bookmarks") {
+                BookmarksScreen(
+                    onBack = { nav.popBackStack() },
+                    onOpen = { url -> nav.navigate(webRoute(url)) },
+                )
+            }
+            composable(
+                "web?url={url}",
+                arguments = listOf(navArgument("url") { type = NavType.StringType; nullable = true; defaultValue = null }),
+            ) { entry ->
+                WebViewScreen(
+                    initialUrl = entry.arguments?.getString("url"),
+                    onBack = { nav.popBackStack() },
+                    onOpenBookmarks = {
+                        // Évite d'empiler favoris → web → favoris → web…
+                        if (!nav.popBackStack("bookmarks", inclusive = false)) nav.navigate("bookmarks")
+                    },
                 )
             }
             composable("search/{query}") { entry ->

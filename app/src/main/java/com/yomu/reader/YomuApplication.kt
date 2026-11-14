@@ -6,6 +6,7 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.yomu.reader.data.BackupWorker
+import com.yomu.reader.data.Bookmarks
 import com.yomu.reader.data.CrashLog
 import com.yomu.reader.data.DownloadService
 import com.yomu.reader.data.Downloads
@@ -22,6 +23,7 @@ class YomuApplication : Application(), ImageLoaderFactory {
         CrashLog.install(this)
         Prefs.init(this)
         Library.init(this)
+        Bookmarks.init(this)
         Downloads.init(this)
         UpdateWorker.createChannel(this)
         runCatching { UpdateWorker.schedule(this) }

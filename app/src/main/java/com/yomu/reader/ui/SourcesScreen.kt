@@ -58,7 +58,12 @@ import kotlinx.coroutines.CancellationException
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SourcesScreen(onOpen: (Source) -> Unit, onGlobalSearch: (String) -> Unit, onOpenManga: (Manga) -> Unit = {}) {
+fun SourcesScreen(
+    onOpen: (Source) -> Unit,
+    onGlobalSearch: (String) -> Unit,
+    onOpenManga: (Manga) -> Unit = {},
+    onOpenBrowser: () -> Unit = {},
+) {
     var query by rememberSaveable { mutableStateOf("") }
     val focus = LocalFocusManager.current
     Scaffold(topBar = { TopAppBar(title = { Text("Explorer") }) }) { padding ->
@@ -81,6 +86,15 @@ fun SourcesScreen(onOpen: (Source) -> Unit, onGlobalSearch: (String) -> Unit, on
                         }
                     }),
                 )
+            }
+            item(key = "browser") {
+                ListItem(
+                    headlineContent = { Text("Navigateur") },
+                    supportingContent = { Text("Ouvrir n'importe quelle adresse, tes favoris") },
+                    leadingContent = { Icon(YomuIcons.Public, contentDescription = null) },
+                    modifier = Modifier.clickable { onOpenBrowser() },
+                )
+                HorizontalDivider()
             }
             item(key = "reco") { Recommendations(onOpenManga) }
             items(SourceManager.all, key = { it.id }) { source ->
