@@ -4,6 +4,7 @@ import android.content.Context
 import com.yomu.reader.model.Chapter
 import com.yomu.reader.model.Manga
 import com.yomu.reader.source.SourceManager
+import com.yomu.reader.source.normalizeTitle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +55,15 @@ data class Progress(
 
 data class UpdateItem(val key: String, val chapterId: String, val chapterTitle: String, val foundAt: Long)
 
+/** Série importée mais introuvable sur les sources : gardée pour être retrouvée plus tard. */
+data class PendingEntry(
+    val title: String,
+    val maxRead: Float? = null,
+    val status: ReadingStatus? = null,
+    val rating: Int = 0,
+    val addedAt: Long = System.currentTimeMillis(),
+)
+
 data class RefreshResult(val newChapters: Int, val mangas: List<String>)
 
 fun splitKey(key: String): Pair<String, String> = key.substringBefore("::") to key.substringAfter("::")
@@ -84,6 +94,44 @@ object Library {
 
     private val _updates = MutableStateFlow<List<UpdateItem>>(emptyList())
     val updates: StateFlow<List<UpdateItem>> = _updates.asStateFlow()
+
+    private val _pending = MutableStateFlow<List<PendingEntry>>(emptyList())
+    val pending: StateFlow<List<PendingEntry>> = _pending.asStateFlow()
+
+    fun addPending(entry: PendingEntry) {
+        val key = normalizeTitle(entry.title)
+        if (key.isEmpty()) return
+        _pending.update { list -> list.filterNot { normalizeTitle(it.title) == key } + entry }
+        save()
+    }
+
+    fun removePending(title: String) {
+        val key = normalizeTitle(title)
+        _pending.update { list -> list.filterNot { normalizeTitle(it.title) == key } }
+        save()
+    }
+
+    /** Si une série ajoutée correspond à une série « À retrouver », on reprend sa progression. */
+    private fun matchPending(manga: Manga, chapters: List<Chapter>?) {
+        val key = normalizeTitle(manga.title)
+        val p = _pending.value.firstOrNull { normalizeTitle(it.title) == key } ?: return
+        val max = p.maxRead
+        if (max != null && chapters != null) {
+            val ids = chapters.filter { c -> val n = c.number; n != null && n <= max }.map { it.id }
+            if (ids.isNotEmpty()) {
+                _progress.update { map ->
+                    val pr = map[manga.key] ?: Progress()
+                    map + (manga.key to pr.copy(read = pr.read + ids, lastChapterId = pr.lastChapterId ?: chapters.firstOrNull { it.id in ids }?.id))
+                }
+            }
+        }
+        _entries.update { list ->
+            list.map {
+                if (it.manga.key == manga.key) it.copy(status = p.status ?: it.status, rating = if (p.rating > 0) p.rating else it.rating) else it
+            }
+        }
+        removePending(p.title)
+    }
 
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
@@ -135,6 +183,7 @@ object Library {
             val status = if (started) ReadingStatus.READING else ReadingStatus.PLANNED
             _entries.update { list -> list + LibraryEntry(manga, System.currentTimeMillis(), status = status) }
             rememberManga(manga)
+            matchPending(manga, chapters)
             if (chapters != null) {
                 storedChapters[manga.key] = chapters
                 ChapterCache.put(manga.key, chapters)
@@ -219,7 +268,15 @@ object Library {
         } finally {
             _refreshing.value = false
         }
-        RefreshResult(total.get(), names.toList())
+        // Puis on retente les séries « À retrouver ».
+        val found = try {
+            TachiImport.retryPending()
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Exception) {
+            emptyList()
+        }
+        RefreshResult(total.get() + found.size, names.toList() + found)
     }
 
     fun clearUpdates() {
@@ -473,6 +530,17 @@ object Library {
             put("progress", progressObj)
             put("mangas", mangasObj)
             put("updates", updatesArr)
+            put("pending", JSONArray().apply {
+                _pending.value.forEach { p ->
+                    put(JSONObject().apply {
+                        put("title", p.title)
+                        p.maxRead?.let { put("maxRead", it.toDouble()) }
+                        put("status", p.status?.name)
+                        put("rating", p.rating)
+                        put("addedAt", p.addedAt)
+                    })
+                }
+            })
         }
     }
 
@@ -481,6 +549,19 @@ object Library {
         _progress.value = parseProgress(json)
         _mangas.value = parseMangas(json)
         val arr = json.optJSONArray("updates") ?: JSONArray()
+        val pArr = json.optJSONArray("pending") ?: JSONArray()
+        _pending.value = (0 until pArr.length()).mapNotNull { i ->
+            val o = pArr.getJSONObject(i)
+            val t = o.str("title") ?: return@mapNotNull null
+            val m = o.optDouble("maxRead", Double.NaN)
+            PendingEntry(
+                title = t,
+                maxRead = if (m.isNaN()) null else m.toFloat(),
+                status = ReadingStatus.entries.firstOrNull { it.name == o.str("status") },
+                rating = o.optInt("rating"),
+                addedAt = o.optLong("addedAt"),
+            )
+        }
         _updates.value = (0 until arr.length()).mapNotNull { i ->
             val o = arr.getJSONObject(i)
             val key = o.str("key") ?: return@mapNotNull null

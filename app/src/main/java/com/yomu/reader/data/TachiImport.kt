@@ -367,6 +367,7 @@ object TachiImport {
             val mangaSource = manga?.let { SourceManager.get(it.sourceId) }
             if (manga == null || mangaSource == null) {
                 notFound += entry.title
+                keepPending(entry)
                 return
             }
             val chapters = mangaSource.chapters(manga.id)
@@ -387,10 +388,38 @@ object TachiImport {
         } catch (e: Exception) {
             CrashLog.record("Import « ${entry.title} »", e)
             notFound += entry.title
+            keepPending(entry)
         }
     }
 
     /** Cherche la série sur toutes les sources en ligne, dans l'ordre (MangaDex d'abord). */
+    private fun keepPending(entry: BackupEntry) {
+        Library.addPending(PendingEntry(entry.title, entry.maxRead, entry.status, entry.rating))
+    }
+
+    /** Retente les séries « À retrouver ». Renvoie les titres retrouvés et ajoutés. */
+    suspend fun retryPending(): List<String> {
+        val found = mutableListOf<String>()
+        for (p in Library.pending.value) {
+            val manga = findAnywhere(listOf(p.title)) ?: continue
+            val src = SourceManager.get(manga.sourceId) ?: continue
+            try {
+                val chapters = src.chapters(manga.id)
+                val max = p.maxRead
+                val readIds = if (max == null) emptyList() else chapters.filter { c -> val n = c.number; n != null && n <= max }.map { it.id }
+                Library.importEntry(manga, chapters, readIds, 0L, 0L, status = p.status, rating = p.rating)
+                Library.removePending(p.title)
+                found += manga.title
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: Exception) {
+                CrashLog.record("À retrouver « ${p.title} »", e)
+            }
+            delay(250)
+        }
+        return found
+    }
+
     private suspend fun findAnywhere(titles: List<String>): com.yomu.reader.model.Manga? {
         for (src in SourceManager.all) {
             if (src.id == "local") continue

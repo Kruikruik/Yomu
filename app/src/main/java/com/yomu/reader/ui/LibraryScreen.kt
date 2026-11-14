@@ -2,6 +2,8 @@ package com.yomu.reader.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -56,7 +58,14 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LibraryScreen(onOpen: (Manga) -> Unit, onRead: (key: String, chapterId: String) -> Unit) {
+fun LibraryScreen(
+    onOpen: (Manga) -> Unit,
+    onRead: (key: String, chapterId: String) -> Unit,
+    onSearch: (String) -> Unit = {},
+) {
+    val pending by Library.pending.collectAsState()
+    var showPending by remember { mutableStateOf(false) }
+    if (showPending) PendingDialog(pending, onSearch = { showPending = false; onSearch(it) }, onDismiss = { showPending = false })
     val entries by Library.entries.collectAsState()
     val progress by Library.progress.collectAsState()
     val downloaded by Downloads.downloaded.collectAsState()
@@ -204,11 +213,20 @@ fun LibraryScreen(onOpen: (Manga) -> Unit, onRead: (key: String, chapterId: Stri
                 .padding(padding)
                 .fillMaxSize()
         ) {
-            if (entries.isNotEmpty()) {
+            if (entries.isNotEmpty() || pending.isNotEmpty()) {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    if (pending.isNotEmpty()) {
+                        item(key = "pending") {
+                            FilterChip(
+                                selected = false,
+                                onClick = { showPending = true },
+                                label = { Text("À retrouver (${pending.size})") },
+                            )
+                        }
+                    }
                     item(key = "s_all") {
                         FilterChip(selected = statusFilter == null, onClick = { statusFilter = null }, label = { Text("Tout") })
                     }
@@ -272,4 +290,61 @@ fun LibraryScreen(onOpen: (Manga) -> Unit, onRead: (key: String, chapterId: Stri
             }
         }
     }
+}
+
+/** Séries importées mais introuvables pour l'instant sur les sources. */
+@Composable
+private fun PendingDialog(
+    pending: List<com.yomu.reader.data.PendingEntry>,
+    onSearch: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var working by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<String?>(null) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { if (!working) onDismiss() },
+        title = { Text("À retrouver (${pending.size})") },
+        text = {
+            Column {
+                Text(
+                    "Introuvables pour l'instant sur MangaDex et Webtoon. Yomu les recherche à chaque vérification. " +
+                        "Appuie sur un titre pour le chercher toi-même (il existe parfois sous un autre nom).",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                result?.let { Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp)) }
+                androidx.compose.foundation.lazy.LazyColumn(Modifier.padding(top = 8.dp).heightIn(max = 380.dp)) {
+                    rowItems(pending, key = { it.title }) { p ->
+                        androidx.compose.material3.ListItem(
+                            headlineContent = { Text(p.title, maxLines = 2) },
+                            supportingContent = {
+                                p.maxRead?.let { Text("Lu jusqu'au ch. ${if (it % 1f == 0f) it.toInt().toString() else it.toString()}") }
+                            },
+                            trailingContent = {
+                                IconButton(onClick = { Library.removePending(p.title) }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Retirer")
+                                }
+                            },
+                            modifier = Modifier.clickable { onSearch(p.title) },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(enabled = !working, onClick = {
+                scope.launch {
+                    working = true
+                    val found = try {
+                        com.yomu.reader.data.TachiImport.retryPending()
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                    working = false
+                    result = if (found.isEmpty()) "Toujours rien de nouveau." else "Retrouvées : ${found.joinToString(", ")}"
+                }
+            }) { Text(if (working) "Recherche…" else "Rechercher maintenant") }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(enabled = !working, onClick = onDismiss) { Text("Fermer") } },
+    )
 }

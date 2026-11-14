@@ -212,6 +212,7 @@ fun YomuRoot(startTab: String? = null) {
                 LibraryScreen(
                     onOpen = { m -> nav.navigate(mangaRoute(m.sourceId, m.id)) },
                     onRead = { key, chapterId -> nav.openReader(key, chapterId) },
+                    onSearch = { q -> nav.navigate("search/${Uri.encode(q)}") },
                 )
             }
             composable("updates") {

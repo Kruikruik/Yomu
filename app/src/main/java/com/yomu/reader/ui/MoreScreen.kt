@@ -284,7 +284,7 @@ fun MoreScreen(onStats: () -> Unit = {}) {
                                 Text("• $it", style = MaterialTheme.typography.bodySmall)
                             }
                             Text(
-                                "\nTu peux les chercher à la main dans Explorer (parfois sous un autre titre).",
+                                "\nElles sont gardées dans Bibliothèque → « À retrouver » avec ta progression : Yomu les recherche à chaque vérification des nouveaux chapitres.",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
