@@ -73,7 +73,7 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.5")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
-    implementation("com.squareup.okhttp3:okhttp:5.5.1")
+    implementation("com.squareup.okhttp3:okhttp:5.1.0")
     // Analyse HTML + sélecteurs CSS pour les extensions JSON.
     implementation("org.jsoup:jsoup:1.23.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
