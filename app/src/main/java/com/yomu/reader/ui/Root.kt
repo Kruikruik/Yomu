@@ -239,8 +239,10 @@ fun YomuRoot(startTab: String? = null) {
                     onOpenManga = { m -> nav.navigate(mangaRoute(m.sourceId, m.id)) },
                     onOpenBrowser = { nav.navigate("bookmarks") },
                     onOpenExtensions = { nav.navigate("extensions") },
+                    onOpenTachi = { nav.navigate("tachi") },
                 )
             }
+            composable("tachi") { TachiScreen(onBack = { nav.popBackStack() }) }
             composable("extensions") {
                 ExtensionsScreen(
                     onBack = { nav.popBackStack() },
@@ -274,7 +276,7 @@ fun YomuRoot(startTab: String? = null) {
                 )
             }
             composable("more") {
-                MoreScreen(onStats = { nav.navigate("stats") })
+                MoreScreen(onStats = { nav.navigate("stats") }, onTachi = { nav.navigate("tachi") })
             }
             composable("stats") {
                 StatsScreen(onBack = { nav.popBackStack() })

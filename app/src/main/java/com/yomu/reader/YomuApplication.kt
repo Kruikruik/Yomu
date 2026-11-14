@@ -15,6 +15,14 @@ import com.yomu.reader.data.Prefs
 import com.yomu.reader.data.UpdateWorker
 import com.yomu.reader.extension.Extensions
 import com.yomu.reader.net.Http
+import com.yomu.reader.tachi.TachiExtensions
+import android.content.Context
+import eu.kanade.tachiyomi.network.NetworkHelper
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.json.Json
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.addSingleton
+import uy.kohesive.injekt.api.addSingletonFactory
 
 class YomuApplication : Application(), ImageLoaderFactory {
 
@@ -23,6 +31,8 @@ class YomuApplication : Application(), ImageLoaderFactory {
         instance = this
         CrashLog.install(this)
         Prefs.init(this)
+        setupTachiyomiApi()
+        TachiExtensions.init(this)
         Extensions.init(this) // avant Library : les séries des extensions doivent retrouver leur source
         Library.init(this)
         Bookmarks.init(this)
@@ -31,6 +41,21 @@ class YomuApplication : Application(), ImageLoaderFactory {
         runCatching { UpdateWorker.schedule(this) }
         DownloadService.createChannel(this)
         runCatching { BackupWorker.schedule(this) }
+    }
+
+    /** Objets que les extensions Tachiyomi/Mihon demandent à l'appli (via Injekt). */
+    @OptIn(ExperimentalSerializationApi::class)
+    private fun setupTachiyomiApi() {
+        val app = this
+        Injekt.addSingleton<Application>(app)
+        Injekt.addSingleton<Context>(app)
+        Injekt.addSingletonFactory { NetworkHelper(app) }
+        Injekt.addSingletonFactory {
+            Json {
+                ignoreUnknownKeys = true
+                explicitNulls = false
+            }
+        }
     }
 
     companion object {

@@ -52,9 +52,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -75,12 +73,24 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.5")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.1.0")
     // Analyse HTML + sélecteurs CSS pour les extensions JSON.
-    implementation("org.jsoup:jsoup:1.18.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jsoup:jsoup:1.23.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+
+    // Bibliothèques fournies aux extensions Tachiyomi/Mihon (mêmes que Mihon 0.21).
+    implementation("io.reactivex:rxjava:1.3.8")
+    implementation("uy.kohesive.injekt:injekt-core:1.16.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
+    implementation("androidx.preference:preference-ktx:1.2.1")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
     // Installe les « profils de démarrage » de Compose : appli plus fluide dès le premier lancement.
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }

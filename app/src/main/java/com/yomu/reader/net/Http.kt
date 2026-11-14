@@ -27,6 +27,8 @@ object Http {
             .readTimeout(40, TimeUnit.SECONDS)
             // Même cookies que le navigateur intégré : les sessions ouvertes là-bas servent aussi ici.
             .cookieJar(WebCookies)
+            // Images des extensions Tachiyomi : chargées par le client de l'extension.
+            .addInterceptor(com.yomu.reader.tachi.TachiImageInterceptor)
             .addInterceptor { chain ->
                 val req = chain.request()
                 val builder = req.newBuilder()

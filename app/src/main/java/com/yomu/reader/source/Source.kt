@@ -1,6 +1,7 @@
 package com.yomu.reader.source
 
 import com.yomu.reader.extension.Extensions
+import com.yomu.reader.tachi.TachiExtensions
 import com.yomu.reader.model.Chapter
 import com.yomu.reader.model.Manga
 import com.yomu.reader.model.MangasPage
@@ -76,10 +77,11 @@ object SourceManager {
     ).map { it.inBackground() }
 
     /** Sources visibles : intégrées + extensions JSON activées par l'utilisateur. */
-    val all: List<Source> get() = builtin + Extensions.enabledSources()
+    val all: List<Source> get() = builtin + Extensions.enabledSources() + TachiExtensions.sources()
 
     /** Cherche aussi dans les extensions désactivées, pour que la bibliothèque reste lisible. */
-    fun get(id: String): Source? = builtin.firstOrNull { it.id == id } ?: Extensions.sourceById(id)
+    fun get(id: String): Source? =
+        builtin.firstOrNull { it.id == id } ?: Extensions.sourceById(id) ?: TachiExtensions.sourceById(id)
 }
 
 fun Source.inBackground(): Source = if (this is BackgroundSource) this else BackgroundSource(this)

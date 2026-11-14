@@ -69,7 +69,7 @@ private fun formatSize(bytes: Long): String = when {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalCoilApi::class)
 @Composable
-fun MoreScreen(onStats: () -> Unit = {}) {
+fun MoreScreen(onStats: () -> Unit = {}, onTachi: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val queue by Downloads.queue.collectAsState()
@@ -329,6 +329,11 @@ fun MoreScreen(onStats: () -> Unit = {}) {
                 headlineContent = { Text("Statistiques") },
                 supportingContent = { Text("Séries par statut, chapitres lus, genres préférés…") },
                 modifier = Modifier.clickable { onStats() },
+            )
+            ListItem(
+                headlineContent = { Text("Dépôts & Extensions") },
+                supportingContent = { Text("Ajouter un dépôt Tachiyomi / Mihon, installer des extensions") },
+                modifier = Modifier.clickable { onTachi() },
             )
 
             SectionTitle("Apparence")
