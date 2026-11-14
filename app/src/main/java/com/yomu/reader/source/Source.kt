@@ -1,5 +1,6 @@
 package com.yomu.reader.source
 
+import com.yomu.reader.extension.Extensions
 import com.yomu.reader.model.Chapter
 import com.yomu.reader.model.Manga
 import com.yomu.reader.model.MangasPage
@@ -8,7 +9,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Une source de lecture. Pour en ajouter une : créer une classe qui implémente
- * cette interface, puis l'ajouter dans [SourceManager.all].
+ * cette interface, puis l'ajouter dans SourceManager, ou importer une extension JSON (voir docs/extensions.md).
  */
 interface Source {
     /** Identifiant unique et stable (sert de clé dans la bibliothèque). */
@@ -67,14 +68,21 @@ fun FilterState.activeCount(): Int = values.sumOf { m -> m.count { it.value != 0
 fun normalizeTitle(s: String): String = s.lowercase().filter { it.isLetterOrDigit() }
 
 object SourceManager {
-    val all: List<Source> = listOf(
+    /** Sources intégrées à l'appli. */
+    private val builtin: List<Source> = listOf(
         MangaDexSource("en"),
         WebtoonSource(),
         LocalSource(),
-    ).map { BackgroundSource(it) }
+    ).map { it.inBackground() }
 
-    fun get(id: String): Source? = all.firstOrNull { it.id == id }
+    /** Sources visibles : intégrées + extensions JSON activées par l'utilisateur. */
+    val all: List<Source> get() = builtin + Extensions.enabledSources()
+
+    /** Cherche aussi dans les extensions désactivées, pour que la bibliothèque reste lisible. */
+    fun get(id: String): Source? = builtin.firstOrNull { it.id == id } ?: Extensions.sourceById(id)
 }
+
+fun Source.inBackground(): Source = if (this is BackgroundSource) this else BackgroundSource(this)
 
 /** Exécute tout le travail d'une source hors du thread de l'interface (pas de saccades). */
 private class BackgroundSource(private val inner: Source) : Source by inner {

@@ -25,6 +25,8 @@ object Http {
             .connectionPool(ConnectionPool(16, 5, TimeUnit.MINUTES))
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(40, TimeUnit.SECONDS)
+            // Même cookies que le navigateur intégré : les sessions ouvertes là-bas servent aussi ici.
+            .cookieJar(WebCookies)
             .addInterceptor { chain ->
                 val req = chain.request()
                 val builder = req.newBuilder()

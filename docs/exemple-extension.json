@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "id": "example-manga-site",
+  "name": "Example Manga Site",
+  "lang": "en",
+  "version": 1,
+  "author": "moi",
+  "baseUrl": "https://example-manga-site.com",
+  "userAgent": "webview",
+  "headers": { "Referer": "{baseUrl}/" },
+  "imageHeaders": { "Referer": "{baseUrl}/" },
+  "cookies": { "lang": "en" },
+  "rateLimitMs": 300,
+
+  "popular": {
+    "url": "{baseUrl}/popular?page={page}",
+    "item": "div.manga-list div.manga-card",
+    "title": "h3.manga-title",
+    "link": "a.manga-link@href",
+    "cover": "img.cover@data-src|src",
+    "nextPage": "a.pagination-next"
+  },
+  "latest": {
+    "url": "{baseUrl}/latest?page={page}",
+    "item": "div.manga-list div.manga-card",
+    "title": "h3.manga-title",
+    "link": "a.manga-link@href",
+    "cover": "img.cover@data-src|src",
+    "nextPage": "a.pagination-next"
+  },
+  "search": {
+    "url": "{baseUrl}/search?q={query}&page={page}",
+    "item": "div.search-results div.manga-card",
+    "title": "h3.manga-title",
+    "link": "a.manga-link@href",
+    "cover": "img.cover@data-src|src"
+  },
+
+  "details": {
+    "title": "h1.series-title",
+    "cover": "div.series-cover img@src",
+    "author": "span.author a",
+    "description": "div.synopsis",
+    "status": "span.status",
+    "statusMap": { "Ongoing": "En cours", "Completed": "Terminé", "Hiatus": "En pause" },
+    "genres": "div.genres a"
+  },
+
+  "chapters": {
+    "item": "ul.chapter-list li",
+    "link": "a.chapter-name@href",
+    "title": "a.chapter-name",
+    "date": "span.chapter-date",
+    "dateFormat": "MMM dd, yyyy",
+    "dateLocale": "en",
+    "reverse": false
+  },
+
+  "pages": {
+    "image": "div.reader img.page@data-src|src"
+  }
+}
