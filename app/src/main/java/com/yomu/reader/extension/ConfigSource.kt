@@ -26,11 +26,15 @@ class ConfigSource(val config: ExtensionConfig) : Source {
 
     // ------------------------------------------------------------------ catalogue
 
-    override suspend fun popular(page: Int): MangasPage =
-        list(config.popular ?: config.latest ?: return MangasPage(emptyList(), false), page, "")
+    override suspend fun popular(page: Int): MangasPage {
+        val spec = config.popular ?: config.latest ?: return MangasPage(emptyList(), false)
+        return list(spec, page, "")
+    }
 
-    override suspend fun latest(page: Int): MangasPage =
-        list(config.latest ?: config.popular ?: return MangasPage(emptyList(), false), page, "")
+    override suspend fun latest(page: Int): MangasPage {
+        val spec = config.latest ?: config.popular ?: return MangasPage(emptyList(), false)
+        return list(spec, page, "")
+    }
 
     override suspend fun search(query: String, page: Int): MangasPage {
         val spec = config.search ?: return MangasPage(emptyList(), false)
