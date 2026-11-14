@@ -10,7 +10,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import java.util.concurrent.atomic.AtomicInteger
 import com.yomu.reader.net.Http
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
@@ -314,52 +320,74 @@ object TachiImport {
             return
         }
 
-        val notFound = mutableListOf<String>()
-        var imported = 0
-        favorites.forEachIndexed { i, entry ->
-            _state.update { it.copy(done = i, total = favorites.size, current = entry.title) }
-            try {
-                val manga = entry.mangaDexId?.let { id ->
-                    try {
-                        source.details(id)
-                    } catch (ce: CancellationException) {
-                        throw ce
-                    } catch (_: Exception) {
-                        null
+        val notFound = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val imported = AtomicInteger(0)
+        val done = AtomicInteger(0)
+        _state.update { it.copy(done = 0, total = favorites.size) }
+        // 3 séries en parallèle : beaucoup plus rapide pour les grosses bibliothèques,
+        // tout en restant raisonnable pour les sites.
+        val gate = Semaphore(3)
+        coroutineScope {
+            favorites.map { entry ->
+                async {
+                    gate.withPermit {
+                        importOne(entry, source, notFound, imported)
+                        delay(250)
                     }
-                } ?: findAnywhere(listOf(entry.title) + entry.altTitles)
-                val mangaSource = manga?.let { SourceManager.get(it.sourceId) }
-                if (manga == null || mangaSource == null) {
-                    notFound += entry.title
-                } else {
-                    val chapters = mangaSource.chapters(manga.id)
-                    val max = entry.maxRead
-                    val readIds = if (max == null) {
-                        emptyList()
-                    } else {
-                        chapters.filter { c -> val n = c.number; n != null && n <= max }.map { it.id }
-                    }
-                    Library.importEntry(
-                        manga, chapters, readIds, entry.lastRead, entry.dateAdded,
-                        status = entry.status,
-                        rating = entry.rating,
-                    )
-                    imported++
+                    val n = done.incrementAndGet()
+                    _state.update { it.copy(done = n, current = entry.title) }
                 }
-            } catch (ce: CancellationException) {
-                throw ce
-            } catch (_: Exception) {
-                notFound += entry.title
-            }
-            delay(300) // reste gentil avec l'API MangaDex
+            }.awaitAll()
         }
         _state.value = ImportState(
             finished = true,
             done = favorites.size,
             total = favorites.size,
-            imported = imported,
-            notFound = notFound,
+            imported = imported.get(),
+            notFound = notFound.toList(),
         )
+    }
+
+    private suspend fun importOne(
+        entry: BackupEntry,
+        source: com.yomu.reader.source.Source,
+        notFound: MutableList<String>,
+        imported: AtomicInteger,
+    ) {
+        try {
+            val manga = entry.mangaDexId?.let { id ->
+                try {
+                    source.details(id)
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (_: Exception) {
+                    null
+                }
+            } ?: findAnywhere(listOf(entry.title) + entry.altTitles)
+            val mangaSource = manga?.let { SourceManager.get(it.sourceId) }
+            if (manga == null || mangaSource == null) {
+                notFound += entry.title
+                return
+            }
+            val chapters = mangaSource.chapters(manga.id)
+            val max = entry.maxRead
+            val readIds = if (max == null) {
+                emptyList()
+            } else {
+                chapters.filter { c -> val n = c.number; n != null && n <= max }.map { it.id }
+            }
+            Library.importEntry(
+                manga, chapters, readIds, entry.lastRead, entry.dateAdded,
+                status = entry.status,
+                rating = entry.rating,
+            )
+            imported.incrementAndGet()
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            CrashLog.record("Import « ${entry.title} »", e)
+            notFound += entry.title
+        }
     }
 
     /** Cherche la série sur toutes les sources en ligne, dans l'ordre (MangaDex d'abord). */
@@ -527,7 +555,11 @@ object TachiImport {
             when (wire) {
                 0 -> varint()
                 1 -> pos += 8
-                2 -> pos += length()
+                2 -> {
+                    // length() avance déjà « pos » : il faut le lire avant d'additionner.
+                    val len = length()
+                    pos += len
+                }
                 5 -> pos += 4
                 else -> throw IOException("type protobuf inconnu ($wire)")
             }
