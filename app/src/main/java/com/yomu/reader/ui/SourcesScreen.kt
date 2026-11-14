@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -47,6 +48,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import com.yomu.reader.data.Library
+import com.yomu.reader.extension.Extensions
 import com.yomu.reader.data.MangaCache
 import com.yomu.reader.data.ReadingStatus
 import com.yomu.reader.source.FilterState
@@ -63,7 +65,11 @@ fun SourcesScreen(
     onGlobalSearch: (String) -> Unit,
     onOpenManga: (Manga) -> Unit = {},
     onOpenBrowser: () -> Unit = {},
+    onOpenExtensions: () -> Unit = {},
 ) {
+    // Recompose quand l'utilisateur ajoute / active / désactive une extension.
+    val extensions by Extensions.installed.collectAsState()
+    val sources = remember(extensions) { SourceManager.all }
     var query by rememberSaveable { mutableStateOf("") }
     val focus = LocalFocusManager.current
     Scaffold(topBar = { TopAppBar(title = { Text("Explorer") }) }) { padding ->
@@ -96,8 +102,19 @@ fun SourcesScreen(
                 )
                 HorizontalDivider()
             }
+            item(key = "extensions") {
+                ListItem(
+                    headlineContent = { Text("Extensions") },
+                    supportingContent = {
+                        Text(if (extensions.isEmpty()) "Importer tes fichiers JSON" else "${extensions.count { it.enabled }} active(s) sur ${extensions.size}")
+                    },
+                    leadingContent = { Icon(Icons.Default.Add, contentDescription = null) },
+                    modifier = Modifier.clickable { onOpenExtensions() },
+                )
+                HorizontalDivider()
+            }
             item(key = "reco") { Recommendations(onOpenManga) }
-            items(SourceManager.all, key = { it.id }) { source ->
+            items(sources, key = { it.id }) { source ->
                 ListItem(
                     headlineContent = { Text(source.name) },
                     supportingContent = { Text(langName(source.lang)) },

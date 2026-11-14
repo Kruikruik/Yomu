@@ -13,6 +13,7 @@ import com.yomu.reader.data.Downloads
 import com.yomu.reader.data.Library
 import com.yomu.reader.data.Prefs
 import com.yomu.reader.data.UpdateWorker
+import com.yomu.reader.extension.Extensions
 import com.yomu.reader.net.Http
 
 class YomuApplication : Application(), ImageLoaderFactory {
@@ -22,6 +23,7 @@ class YomuApplication : Application(), ImageLoaderFactory {
         instance = this
         CrashLog.install(this)
         Prefs.init(this)
+        Extensions.init(this) // avant Library : les séries des extensions doivent retrouver leur source
         Library.init(this)
         Bookmarks.init(this)
         Downloads.init(this)

@@ -238,6 +238,13 @@ fun YomuRoot(startTab: String? = null) {
                     onGlobalSearch = { q -> nav.navigate("search/${Uri.encode(q)}") },
                     onOpenManga = { m -> nav.navigate(mangaRoute(m.sourceId, m.id)) },
                     onOpenBrowser = { nav.navigate("bookmarks") },
+                    onOpenExtensions = { nav.navigate("extensions") },
+                )
+            }
+            composable("extensions") {
+                ExtensionsScreen(
+                    onBack = { nav.popBackStack() },
+                    onOpenWebsite = { url -> nav.navigate(webRoute(url)) },
                 )
             }
             composable("bookmarks") {

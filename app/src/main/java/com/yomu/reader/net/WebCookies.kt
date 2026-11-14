@@ -42,6 +42,13 @@ object WebCookies : CookieJar {
     /** Cookies bruts d'une page, au format « nom=valeur; nom2=valeur2 ». */
     fun rawFor(url: String): String? = runCatching { manager?.getCookie(url) }.getOrNull()
 
+    /** Pose un cookie s'il n'existe pas encore (ex. cookies par défaut d'une extension). */
+    fun seed(url: String, name: String, value: String) {
+        val m = manager ?: return
+        val existing = rawFor(url).orEmpty().split(";").map { it.substringBefore("=").trim() }
+        if (name !in existing) m.setCookie(url, "$name=$value; Path=/")
+    }
+
     /** Déconnecte d'un site : supprime ses cookies (domaine et sous-domaines). */
     fun clearFor(url: String): Int {
         val m = manager ?: return 0
